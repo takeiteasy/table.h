@@ -9,7 +9,6 @@
 #include <stdio.h>
 
 int main(int argc, const char *argv[]) {
-    
     illmap_t *map = illmap_def();
     illmap_set(map, 1000, 2000);
     illmap_get(map, 1000, &tmp);
