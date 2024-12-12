@@ -1,22 +1,22 @@
-/* ill.h -- https://github.com/takeiteasy/ill
- 
+/* ill.h -- https://github.com/takeiteasy/ill.h
+
  int lookup library
- 
+
  Copyright (C) 2024  George Watson
- 
+
  This program is free software: you can redistribute it and/or modify
  it under the terms of the GNU General Public License as published by
  the Free Software Foundation, either version 3 of the License, or
  (at your option) any later version.
- 
+
  This program is distributed in the hope that it will be useful,
  but WITHOUT ANY WARRANTY; without even the implied warranty of
  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  GNU General Public License for more details.
- 
+
  You should have received a copy of the GNU General Public License
  along with this program.  If not, see <https://www.gnu.org/licenses/>.
- 
+
  This library is based off https://github.com/billziss-gh/imap/
  Copyright (c) 2023 Bill Zissimopoulos. All rights reserved. */
 
@@ -301,59 +301,6 @@ static imap_node_t* imap_ensure(imap_node_t *tree, size_t capacity) {
     return newtree;
 }
 
-static uint32_t* imap_find_ensure(illmap_t *map, uint64_t x) {
-    uint32_t *slotstack[16 + 1];
-    uint32_t posnstack[16 + 1];
-    uint32_t stackp, stacki;
-    imap_node_t *newnode, *node = map->tree;
-    uint32_t *slot;
-    uint32_t newmark, sval, diff, posn = 16, dirn = 0;
-    uint64_t prfx;
-    stackp = 0;
-    for (;;) {
-        slot = &node->vec32[dirn];
-        sval = *slot;
-        slotstack[stackp] = slot;
-        posnstack[stackp++] = posn;
-        if (!(sval & imap__slot_node__)) {
-            prfx = imap__node_prefix__(node);
-            if (!posn && prfx == (x & ~0xfull))
-                return slot;
-            if (++map->count > map->capacity) {
-                map->capacity *= 2;
-                map->tree = imap_ensure(map->tree, map->capacity);
-            }
-            diff = imap__xpos__(prfx ^ x);
-            assert(diff < 16);
-            for (stacki = stackp; diff > posn;)
-                posn = posnstack[--stacki];
-            if (stacki != stackp) {
-                slot = slotstack[stacki];
-                sval = *slot;
-                assert(sval & imap__slot_node__);
-                newmark = imap__alloc_node__(map->tree);
-                *slot = (*slot & imap__slot_pmask__) | imap__slot_node__ | newmark;
-                newnode = imap__node__(map->tree, newmark);
-                *newnode = imap__node_zero__;
-                newmark = imap__alloc_node__(map->tree);
-                newnode->vec32[imap__xdir__(prfx, diff)] = sval;
-                newnode->vec32[imap__xdir__(x, diff)] = imap__slot_node__ | newmark;
-                imap__node_setprefix__(newnode, imap__xpfx__(prfx, diff) | diff);
-            } else {
-                newmark = imap__alloc_node__(map->tree);
-                *slot = (*slot & imap__slot_pmask__) | imap__slot_node__ | newmark;
-            }
-            newnode = imap__node__(map->tree, newmark);
-            *newnode = imap__node_zero__;
-            imap__node_setprefix__(newnode, x & ~0xfull);
-            return &newnode->vec32[x & 0xfull];
-        }
-        node = imap__node__(map->tree, sval & imap__slot_value__);
-        posn = imap__node_pos__(node);
-        dirn = imap__xdir__(x, posn);
-    }
-}
-
 static uint32_t *imap_lookup(illmap_t *map, uint64_t x) {
     imap_node_t *node = map->tree;
     uint32_t *slot;
@@ -373,6 +320,54 @@ static uint32_t *imap_lookup(illmap_t *map, uint64_t x) {
         dirn = imap__xdir__(x, posn);
     }
 }
+
+static imap_slot_t *imap_assign(illmap_t *map, imap_u64_t x) {
+        imap_slot_t *slotstack[16 + 1];
+        imap_u32_t posnstack[16 + 1];
+        imap_u32_t stackp, stacki;
+        imap_node_t *newnode, *node = map->tree;
+        imap_slot_t *slot;
+        imap_u32_t newmark, sval, diff, posn = 16, dirn = 0;
+        imap_u64_t prfx;
+        stackp = 0;
+        for (;;) {
+            slot = &node->vec32[dirn];
+            sval = *slot;
+            slotstack[stackp] = slot, posnstack[stackp++] = posn;
+            if (!(sval & imap__slot_node__)) {
+                prfx = imap__node_prefix__(node);
+                if (0 == posn && prfx == (x & ~0xfull))
+                    return slot;
+                diff = imap__xpos__(prfx ^ x);
+                IMAP_ASSERT(diff < 16);
+                for (stacki = stackp; diff > posn;)
+                    posn = posnstack[--stacki];
+                if (stacki != stackp) {
+                    slot = slotstack[stacki];
+                    sval = *slot;
+                    IMAP_ASSERT(sval & imap__slot_node__);
+                    newmark = imap__alloc_node__(tree);
+                    *slot = (*slot & imap__slot_pmask__) | imap__slot_node__ | newmark;
+                    newnode = imap__node__(tree, newmark);
+                    *newnode = imap__node_zero__;
+                    newmark = imap__alloc_node__(tree);
+                    newnode->vec32[imap__xdir__(prfx, diff)] = sval;
+                    newnode->vec32[imap__xdir__(x, diff)] = imap__slot_node__ | newmark;
+                    imap__node_setprefix__(newnode, imap__xpfx__(prfx, diff) | diff);
+                } else {
+                    newmark = imap__alloc_node__(tree);
+                    *slot = (*slot & imap__slot_pmask__) | imap__slot_node__ | newmark;
+                }
+                newnode = imap__node__(tree, newmark);
+                *newnode = imap__node_zero__;
+                imap__node_setprefix__(newnode, x & ~0xfull);
+                return &newnode->vec32[x & 0xfull];
+            }
+            node = imap__node__(tree, sval & imap__slot_value__);
+            posn = imap__node_pos__(node);
+            dirn = imap__xdir__(x, posn);
+        }
+    }
 
 static inline uint32_t imap__alloc_val__(imap_node_t *tree) {
     uint32_t mark = imap__alloc_node__(tree);
@@ -495,14 +490,18 @@ illmap_t* illmap(illmap_t *old, size_t capacity) {
     illmap_t *result = ILL_ALLOC(sizeof(illmap));
     assert((capacity = !capacity ? ILL_DEFAULT_CAPACITY : capacity) > 0);
     result->capacity = capacity;
-    result->count = 0;
-    result->tree = imap_ensure(NULL, capacity);
+    result->count = old ? old->count : 0;
+    result->tree = imap_ensure(old, capacity);
     return result;
 }
 
 int illmap_set(illmap_t *map, uint64_t key, uint64_t item) {
-    uint32_t *slot = imap_find_ensure(map, key);
+    uint32_t *slot = imap_lookup(map, key);
     if (!slot)
+        return 0;
+    if (map->count >= map->capacity)
+        map = illmap(map, map->capacity * 2);
+    if (!(slot = imap_assign(map)))
         return 0;
     imap_setval64(map->tree, slot, item);
     return 1;
