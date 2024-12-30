@@ -1,39 +1,12 @@
-# ill
+# table.h
 
-**I**nt **L**ookup **Library** is a simplified high-level wrapper for [billziss-gh/imap](https://github.com/billziss-gh/imap)
+> [!WARNING]
+> Work in progress
 
-```c
-#define ILL_IMPLEMENTATION
-#include "ill.h"
-#include <assert.h>
-#include <stdio.h>
-
-int main(int argc, const char *argv[]) {
-    illmap_t *map = illmap_def();
-    illmap_set(map, 1000, 2000);
-    illmap_get(map, 1000, &tmp);
-    uint64_t tmp_m;
-    assert(tmp_m == 2000);
-    illmap_del(map, 1000);
-    assert(!illmap_get(map, 1000, NULL));
-    illmap_destroy(map);
-
-    illdict_t *dict = illdict_def()
-    illdict_set(dict, "hello", 15432);
-    uint64_t tmp_d;
-    illdict_get(dict, "hello", &tmp_d);
-    assert(tmp_d == 15432);
-    illdict_del(dict, "hello");
-    assert(!illdict_get(dict, "hello", NULL));
-    illdict_destroy(dict);
-    return 0;
-}
-
-```
+Table data type for C, forked from [billziss-gh/imap](https://github.com/billziss-gh/imap)
 
 ### TODO
 
-- [ ] Iteration for table
 - [ ] Add wrapper for iset.h
 - [ ] Add wrapper for ivmap.h
 - [ ] Shrink capacity on delete?

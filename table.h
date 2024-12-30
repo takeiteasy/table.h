@@ -1,6 +1,6 @@
-/* ill.h -- https://github.com/takeiteasy/ill.h
+/* table.h -- https://github.com/takeiteasy/table.h
 
- int lookup library
+ table for C
 
  Copyright (C) 2024  George Watson
 
@@ -20,8 +20,8 @@
  This library is based off https://github.com/billziss-gh/imap/
  Copyright (c) 2023 Bill Zissimopoulos. All rights reserved. */
 
-#ifndef ILL_HEADER
-#define ILL_HEADER
+#ifndef TABLE_HEADER
+#define TABLE_HEADER
 #if defined(__cplusplus)
 extern "C" {
 #endif
@@ -30,65 +30,60 @@ extern "C" {
 #include <string.h>
 #include <stdint.h>
 
-#if !defined(ILL_ALLOC)
-#define ILL_ALLOC malloc
+#if !defined(TABLE_ALLOC)
+#define TABLE_ALLOC malloc
 #endif
-#if !defined(ILL_FREE)
-#define ILL_FREE free
+#if !defined(TABLE_FREE)
+#define TABLE_FREE free
 #endif
 
-#ifndef ILL_DEFAULT_CAPACITY
-#define ILL_DEFAULT_CAPACITY 8
+#ifndef TABLE_DEFAULT_CAPACITY
+#define TABLE_DEFAULT_CAPACITY 8
 #endif
 
 typedef struct imap_node_t imap_node_t;
+
+typedef struct illmap_pair {
+    uint64_t key, *val;
+} illmap_pair_t;
+
+typedef uint64_t(*table_hash)(const void *data, size_t len, uint32_t seed);
+typedef int(*illmap_iter_cb)(illmap_pair_t *pair, void *userdata);
 
 typedef struct illmap {
     imap_node_t *tree;
     size_t count, capacity;
 } illmap_t;
 
-typedef struct illmap_pair {
-    uint64_t key, *val;
-} illmap_pair_t;
-
-illmap_t* illmap(illmap_t *old, size_t capacity);
-#define illmap_def() illmap(NULL, 0)
-int illmap_set(illmap_t *map, uint64_t key, uint64_t value);
-int illmap_get(illmap_t *map, uint64_t key, uint64_t *value);
-int illmap_has(illmap_t *map, uint64_t);
+void illmap(illmap_t *map, uint32_t capacity);
+void illmap_free(illmap_t *map);
+int illmap_set(illmap_t *map, uint64_t key, uint64_t val);
+int illmap_get(illmap_t *map, uint64_t key, uint64_t *val);
+int illmap_has(illmap_t *map, uint64_t key);
 int illmap_del(illmap_t *map, uint64_t key);
-void illmap_foreach(illmap_t *map, int(*callback)(illmap_pair_t *pair, uint64_t, void*), void *userdata);
-void illmap_destroy(illmap_t *map);
+void illmap_foreach(illmap_t *map, illmap_iter_cb callback, void *userdata);
 
-typedef uint64_t(*illdict_hashfn)(const void *data, size_t len, uint32_t seed);
-
-typedef struct illdict {
-    illmap_t *kmap, *vmap;
-    illdict_hashfn hashfn;
+typedef struct Table {
+    illmap_t kmap, vmap;
+    table_hash hashfn;
     uint64_t seed;
-} illdict_t;
+} Table;
 
-typedef struct illdict_pair {
+typedef struct TablePair {
     const char *key;
-    uint64_t val;
-} illdict_pair_t;
+    uint64_t value;
+} TablePair;
 
-illdict_t* illdict(illdict_hashfn hashfn, size_t capacity, size_t seed);
-#define illdict_def() illdict(NULL, 0, 0);
-int illdict_set(illdict_t *dict, const char *key, uint64_t value);
-int illdict_get(illdict_t *dict, const char *key, uint64_t *value);
-int illdict_has(illdict_t *dict, const char *key);
-int illdict_del(illdict_t *dict, const char *key);
-void illdict_foreach(illdict_t *dict, int(*callback)(illdict_pair_t *pair, void *userdata), void *userdata);
-void illdict_destroy(illdict_t *dict);
+void TableInit(Table *table);
+void TableCreate(Table *table, table_hash hashfn, uint32_t capacity, uint64_t seed);
+void TableDestroy(Table *table);
 
 #if defined(__cplusplus)
 }
 #endif
-#endif // ILL_HEADER
+#endif // TABLE_HEADER
 
-#if defined(ILL_IMPLEMENTATION)
+#if defined(TABLE_IMPLEMENTATION)
 #include <assert.h>
 
 struct imap_node_t {
@@ -145,7 +140,7 @@ static inline uint64_t imap__ceilpow2__(uint64_t x) {
 }
 
 static inline void *imap__aligned_alloc__(uint64_t alignment, uint64_t size) {
-    void *p = ILL_ALLOC(size + sizeof(void *) + alignment - 1);
+    void *p = TABLE_ALLOC(size + sizeof(void *) + alignment - 1);
     if (!p)
         return p;
     void **ap = (void**)(((uint64_t)p + sizeof(void *) + alignment - 1) & ~(alignment - 1));
@@ -155,7 +150,7 @@ static inline void *imap__aligned_alloc__(uint64_t alignment, uint64_t size) {
 
 static inline void imap__aligned_free__(void *p) {
     if (p)
-        ILL_FREE(((void**)p)[-1]);
+        TABLE_FREE(((void**)p)[-1]);
 }
 
 #define IMAP_ALIGNED_ALLOC(a, s)    (imap__aligned_alloc__(a, s))
@@ -254,38 +249,37 @@ static inline uint64_t imap__xpfx__(uint64_t x, uint32_t pos) {
     return x & (~0xfull << (pos << 2));
 }
 
-static imap_node_t* imap_ensure(imap_node_t *tree, size_t capacity) {
-    if (!capacity)
-        return NULL;
+static inline imap_node_t* imap_ensure(imap_node_t *tree, uint32_t n) {
     imap_node_t *newtree;
     uint32_t hasnfre, hasvfre, newmark, oldsize, newsize;
     uint64_t newsize64;
-    if (!tree) {
+    if (0 == n)
+        return tree;
+    if (0 == tree)
+    {
         hasnfre = 0;
         hasvfre = 1;
         newmark = sizeof(imap_node_t);
         oldsize = 0;
-    } else {
+    }
+    else
+    {
         hasnfre = !!tree->vec32[imap__tree_nfre__];
         hasvfre = !!tree->vec32[imap__tree_vfre__];
         newmark = tree->vec32[imap__tree_mark__];
         oldsize = tree->vec32[imap__tree_size__];
     }
-    newmark += (capacity * 2 - hasnfre) * sizeof(imap_node_t) + (capacity - hasvfre) * sizeof(uint64_t);
+    newmark += (n * 2 - hasnfre) * sizeof(imap_node_t) + (n - hasvfre) * sizeof(uint64_t);
     if (newmark <= oldsize)
         return tree;
     newsize64 = imap__ceilpow2__(newmark);
     if (0x20000000 < newsize64)
-        return NULL;
+        return 0;
     newsize = (uint32_t)newsize64;
-    newtree = (imap_node_t*)IMAP_ALIGNED_ALLOC(sizeof(imap_node_t), newsize);
+    newtree = (imap_node_t *)IMAP_ALIGNED_ALLOC(sizeof(imap_node_t), newsize);
     if (!newtree)
         return newtree;
-    if (tree) {
-        memcpy(newtree, tree, tree->vec32[imap__tree_mark__]);
-        IMAP_ALIGNED_FREE(tree);
-        newtree->vec32[imap__tree_size__] = newsize;
-    } else {
+    if (!tree) {
         newtree->vec32[imap__tree_root__] = 0;
         newtree->vec32[imap__tree_resv__] = 0;
         newtree->vec32[imap__tree_mark__] = sizeof(imap_node_t);
@@ -297,12 +291,16 @@ static imap_node_t* imap_ensure(imap_node_t *tree, size_t capacity) {
         newtree->vec64[5] = 6 << imap__slot_shift__;
         newtree->vec64[6] = 7 << imap__slot_shift__;
         newtree->vec64[7] = 0;
+    } else {
+        memcpy(newtree, tree, tree->vec32[imap__tree_mark__]);
+        IMAP_ALIGNED_FREE(tree);
+        newtree->vec32[imap__tree_size__] = newsize;
     }
     return newtree;
 }
 
-static uint32_t *imap_lookup(illmap_t *map, uint64_t x) {
-    imap_node_t *node = map->tree;
+static uint32_t *imap_lookup(imap_node_t *tree, uint64_t x) {
+    imap_node_t *node = tree;
     uint32_t *slot;
     uint32_t sval, posn = 16, dirn = 0;
     for (;;) {
@@ -315,59 +313,59 @@ static uint32_t *imap_lookup(illmap_t *map, uint64_t x) {
             }
             return 0;
         }
-        node = imap__node__(node, sval & imap__slot_value__);
+        node = imap__node__(tree, sval & imap__slot_value__);
         posn = imap__node_pos__(node);
         dirn = imap__xdir__(x, posn);
     }
 }
 
-static imap_slot_t *imap_assign(illmap_t *map, imap_u64_t x) {
-        imap_slot_t *slotstack[16 + 1];
-        imap_u32_t posnstack[16 + 1];
-        imap_u32_t stackp, stacki;
-        imap_node_t *newnode, *node = map->tree;
-        imap_slot_t *slot;
-        imap_u32_t newmark, sval, diff, posn = 16, dirn = 0;
-        imap_u64_t prfx;
-        stackp = 0;
-        for (;;) {
-            slot = &node->vec32[dirn];
-            sval = *slot;
-            slotstack[stackp] = slot, posnstack[stackp++] = posn;
-            if (!(sval & imap__slot_node__)) {
-                prfx = imap__node_prefix__(node);
-                if (0 == posn && prfx == (x & ~0xfull))
-                    return slot;
-                diff = imap__xpos__(prfx ^ x);
-                IMAP_ASSERT(diff < 16);
-                for (stacki = stackp; diff > posn;)
-                    posn = posnstack[--stacki];
-                if (stacki != stackp) {
-                    slot = slotstack[stacki];
-                    sval = *slot;
-                    IMAP_ASSERT(sval & imap__slot_node__);
-                    newmark = imap__alloc_node__(tree);
-                    *slot = (*slot & imap__slot_pmask__) | imap__slot_node__ | newmark;
-                    newnode = imap__node__(tree, newmark);
-                    *newnode = imap__node_zero__;
-                    newmark = imap__alloc_node__(tree);
-                    newnode->vec32[imap__xdir__(prfx, diff)] = sval;
-                    newnode->vec32[imap__xdir__(x, diff)] = imap__slot_node__ | newmark;
-                    imap__node_setprefix__(newnode, imap__xpfx__(prfx, diff) | diff);
-                } else {
-                    newmark = imap__alloc_node__(tree);
-                    *slot = (*slot & imap__slot_pmask__) | imap__slot_node__ | newmark;
-                }
+static uint32_t *imap_assign(imap_node_t *tree, uint64_t x) {
+    uint32_t *slotstack[16 + 1];
+    uint32_t posnstack[16 + 1];
+    uint32_t stackp, stacki;
+    imap_node_t *newnode, *node = tree;
+    uint32_t *slot;
+    uint32_t newmark, sval, diff, posn = 16, dirn = 0;
+    uint64_t prfx;
+    stackp = 0;
+    for (;;) {
+        slot = &node->vec32[dirn];
+        sval = *slot;
+        slotstack[stackp] = slot, posnstack[stackp++] = posn;
+        if (!(sval & imap__slot_node__)) {
+            prfx = imap__node_prefix__(node);
+            if (0 == posn && prfx == (x & ~0xfull))
+                return slot;
+            diff = imap__xpos__(prfx ^ x);
+            assert(diff < 16);
+            for (stacki = stackp; diff > posn;)
+                posn = posnstack[--stacki];
+            if (stacki != stackp) {
+                slot = slotstack[stacki];
+                sval = *slot;
+                assert(sval & imap__slot_node__);
+                newmark = imap__alloc_node__(tree);
+                *slot = (*slot & imap__slot_pmask__) | imap__slot_node__ | newmark;
                 newnode = imap__node__(tree, newmark);
                 *newnode = imap__node_zero__;
-                imap__node_setprefix__(newnode, x & ~0xfull);
-                return &newnode->vec32[x & 0xfull];
+                newmark = imap__alloc_node__(tree);
+                newnode->vec32[imap__xdir__(prfx, diff)] = sval;
+                newnode->vec32[imap__xdir__(x, diff)] = imap__slot_node__ | newmark;
+                imap__node_setprefix__(newnode, imap__xpfx__(prfx, diff) | diff);
+            } else {
+                newmark = imap__alloc_node__(tree);
+                *slot = (*slot & imap__slot_pmask__) | imap__slot_node__ | newmark;
             }
-            node = imap__node__(tree, sval & imap__slot_value__);
-            posn = imap__node_pos__(node);
-            dirn = imap__xdir__(x, posn);
+            newnode = imap__node__(tree, newmark);
+            *newnode = imap__node_zero__;
+            imap__node_setprefix__(newnode, x & ~0xfull);
+            return &newnode->vec32[x & 0xfull];
         }
+        node = imap__node__(tree, sval & imap__slot_value__);
+        posn = imap__node_pos__(node);
+        dirn = imap__xdir__(x, posn);
     }
+}
 
 static inline uint32_t imap__alloc_val__(imap_node_t *tree) {
     uint32_t mark = imap__alloc_node__(tree);
@@ -385,10 +383,17 @@ static inline uint32_t imap__alloc_val__(imap_node_t *tree) {
     return mark;
 }
 
+static uint64_t imap_getval64(imap_node_t *tree, uint32_t *slot) {
+    assert(!(*slot & imap__slot_node__));
+    uint32_t sval = *slot;
+    return tree->vec64[sval >> imap__slot_shift__];
+}
+
 static void imap_setval64(imap_node_t *tree, uint32_t *slot, uint64_t y) {
     assert(!(*slot & imap__slot_node__));
     uint32_t sval = *slot;
-    if (!(sval >> imap__slot_shift__)) {
+    if (!(sval >> imap__slot_shift__))
+    {
         sval = tree->vec32[imap__tree_vfre__];
         if (!sval)
             sval = imap__alloc_val__(tree);
@@ -399,15 +404,6 @@ static void imap_setval64(imap_node_t *tree, uint32_t *slot, uint64_t y) {
     assert(imap__slot_boxed__(sval));
     *slot = (*slot & imap__slot_pmask__) | sval;
     tree->vec64[sval >> imap__slot_shift__] = y;
-}
-
-static uint64_t imap_getval(imap_node_t *tree, uint32_t *slot) {
-    assert(!(*slot & imap__slot_node__));
-    uint32_t sval = *slot;
-    if (!imap__slot_boxed__(sval))
-        return sval >> imap__slot_shift__;
-    else
-        return tree->vec64[sval >> imap__slot_shift__];
 }
 
 static void imap_delval(imap_node_t *tree, uint32_t *slot) {
@@ -486,44 +482,51 @@ static imap_pair_t imap_iterate(imap_node_t *tree, imap_iter_t *iter, int restar
     return imap__pair_zero__;
 }
 
-illmap_t* illmap(illmap_t *old, size_t capacity) {
-    illmap_t *result = ILL_ALLOC(sizeof(illmap));
-    assert((capacity = !capacity ? ILL_DEFAULT_CAPACITY : capacity) > 0);
-    result->capacity = capacity;
-    result->count = old ? old->count : 0;
-    result->tree = imap_ensure(old, capacity);
-    return result;
+void illmap(illmap_t *map, uint32_t capacity) {
+    map->capacity = capacity > TABLE_DEFAULT_CAPACITY ? capacity : TABLE_DEFAULT_CAPACITY;
+    map->count = 0;
+    map->tree = imap_ensure(NULL, map->capacity);
 }
 
-int illmap_set(illmap_t *map, uint64_t key, uint64_t item) {
-    uint32_t *slot = imap_lookup(map, key);
-    if (!slot)
+void illmap_free(illmap_t *map) {
+    IMAP_ALIGNED_FREE(map->tree);
+    memset(map, 0, sizeof(illmap_t));
+}
+
+int illmap_set(illmap_t *map, uint64_t key, uint64_t val) {
+    uint32_t *slot = imap_lookup(map->tree, key);
+    if (slot) {
+        imap_setval64(map->tree, slot, val);
+        return 1;
+    }
+    if (map->count + 1 >= map->capacity) {
+        map->capacity *= 2;
+        map->tree = imap_ensure(map->tree, map->capacity);
+    }
+    if (!(slot = imap_assign(map->tree, key)))
         return 0;
-    if (map->count >= map->capacity)
-        map = illmap(map, map->capacity * 2);
-    if (!(slot = imap_assign(map)))
-        return 0;
-    imap_setval64(map->tree, slot, item);
+    imap_setval64(map->tree, slot, val);
+    map->count++;
     return 1;
 }
 
 int illmap_get(illmap_t *map, uint64_t key, uint64_t *val) {
-    uint32_t *slot = imap_lookup(map, key);
+    uint32_t *slot = imap_lookup(map->tree, key);
     if (!slot)
         return 0;
     if (val)
-        *val = imap_getval(map->tree, slot);
+        *val = imap_getval64(map->tree, slot);
     return 1;
 }
 
 int illmap_has(illmap_t *map, uint64_t key) {
-    return imap_lookup(map, key) != NULL;
+    return imap_lookup(map->tree, key) != NULL;
 }
 
 int illmap_del(illmap_t *map, uint64_t key) {
     if (!map->count)
         return 0;
-    uint32_t *slot = imap_lookup(map, key);
+    uint32_t *slot = imap_lookup(map->tree, key);
     if (!slot)
         return 0;
     imap_remove(map->tree, key);
@@ -531,28 +534,23 @@ int illmap_del(illmap_t *map, uint64_t key) {
     return 1;
 }
 
-void illmap_foreach(illmap_t *map, int(*callback)(illmap_pair_t *pair, uint64_t, void*), void *userdata) {
+void illmap_foreach(illmap_t *map, illmap_iter_cb callback, void *userdata) {
     imap_iter_t iter;
     imap_pair_t pair = imap_iterate(map->tree, &iter, 1);
     size_t i = 0;
-    illmap_pair_t ezpair;
     for (;;) {
         if (!pair.slot)
             break;
-        ezpair.key = pair.x;
-        uint64_t val = imap_getval(map->tree, pair.slot);
-        ezpair.val = &val;
-        int result = callback(&ezpair, i++, userdata);
-        if (!result)
+        uint64_t val = imap_getval64(map->tree, pair.slot);
+        illmap_pair_t p = {
+            .key = pair.x,
+            .val = &val
+        };
+        if (!callback(&p, userdata))
             break;
         else
             pair = imap_iterate(map->tree, &iter, 0);
     }
-}
-
-void illmap_destroy(illmap_t *map) {
-    IMAP_ALIGNED_FREE(map->tree);
-    ILL_FREE(map);
 }
 
 static void MM86128(const void *key, const int len, uint32_t seed, void *out) {
@@ -642,78 +640,21 @@ static uint64_t murmur(const void *data, size_t len, uint32_t seed) {
     return *(uint64_t*)out;
 }
 
-illdict_t* illdict(illdict_hashfn hashfn, size_t capacity, size_t seed)  {
-    assert((capacity = !capacity ? ILL_DEFAULT_CAPACITY : capacity) > 0);
-    illdict_t *result = malloc(sizeof(illdict_t));
-    result->kmap = illmap(NULL, capacity);
-    result->vmap = illmap(NULL, capacity);
-    result->hashfn = hashfn ? hashfn : murmur;
-    result->seed = seed;
-    return result;
+void TableInit(Table *table) {
+    TableCreate(table, murmur, TABLE_DEFAULT_CAPACITY, 0);
 }
 
-int illdict_set(illdict_t *dict, const char *key, uint64_t value) {
-    uint64_t key_hash = dict->hashfn((void*)key, strlen(key), 0);
-    if (!illmap_has(dict->vmap, key_hash)) {
-        const char *dup = strdup(key);
-        illmap_set(dict->kmap, key_hash, (uint64_t)dup);
-    }
-    return illmap_set(dict->vmap, key_hash, value);
+void TableCreate(Table *table, table_hash hashfn, uint32_t capacity, uint64_t seed) {
+    capacity = capacity > TABLE_DEFAULT_CAPACITY ? capacity : TABLE_DEFAULT_CAPACITY;
+    illmap(&table->kmap, capacity);
+    illmap(&table->vmap, capacity);
+    table->hashfn = hashfn ? hashfn : murmur;
+    table->seed = seed;
 }
 
-int illdict_get(illdict_t *dict, const char *key, uint64_t *value) {
-    uint64_t key_hash = dict->hashfn((void*)key, strlen(key), 0);
-    if (!illmap_has(dict->vmap, key_hash))
-        return 0;
-    if (value) {
-        uint64_t tmp;
-        illmap_get(dict->vmap, key_hash, &tmp);
-        *value = tmp;
-    }
-    return 1;
-}
-
-int illdict_has(illdict_t *dict, const char *key) {
-    uint64_t key_hash = dict->hashfn((void*)key, strlen(key), 0);
-    return illmap_has(dict->vmap, key_hash);
-}
-int illdict_del(illdict_t *dict, const char *key) {
-    uint64_t key_hash = dict->hashfn((void*)key, strlen(key), 0);
-    if (!illmap_has(dict->vmap, key_hash))
-        return 0;
-    illmap_del(dict->vmap, key_hash);
-    uint64_t tmp;
-    illmap_get(dict->kmap, key_hash, &tmp);
-    free((void*)tmp);
-    return illmap_del(dict->kmap, key_hash);
-}
-
-void illdict_foreach(illdict_t *dict, int(*callback)(illdict_pair_t *pair, void*), void *userdata) {
-    imap_iter_t iter;
-    imap_pair_t pair = imap_iterate(dict->kmap->tree, &iter, 1);
-    size_t i = 0;
-    illdict_pair_t p;
-    for (;;) {
-        if (!pair.slot)
-            break;
-        uint64_t tmp;
-        illmap_get(dict->kmap, pair.x, &tmp);
-        p.key = (const char*)tmp;
-        illmap_get(dict->vmap, pair.x, &tmp);
-        p.val = tmp;
-        int result = callback(&p, userdata);
-        if (!result)
-            break;
-        else
-            pair = imap_iterate(dict->kmap->tree, &iter, 0);
-    }
-}
-
-void illdict_destroy(illdict_t *dict) {
-    if (dict->kmap)
-        illmap_destroy(dict->kmap);
-    if (dict->vmap)
-        illmap_destroy(dict->vmap);
-    free(dict);
+void TableDestroy(Table *table) {
+    illmap_free(&table->kmap);
+    illmap_free(&table->vmap);
+    memset(table, 0, sizeof(Table));
 }
 #endif
