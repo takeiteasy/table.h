@@ -1,15 +1,53 @@
 # table.h
 
-> [!WARNING]
-> Work in progress
+Table data type for C.
 
-Table data type for C, forked from [billziss-gh/imap](https://github.com/billziss-gh/imap)
+Build off [billziss-gh/imap](https://github.com/billziss-gh/imap) + the  C11 `_Generic` macro to create an incredibly simple and seemless table, where strings, ints or pointers can be keys or values;
+
+```c
+table_t table_new(void); // default hashfn (murmur) + capacity (8)
+table_t table_make(table_hash hashfn, uint32_t capacity, uint64_t seed);
+void table_free(table_t *table);
+#define table_get(TABLE, KEY, VALUE) ...
+#define table_set(TABLE, KEY, VALUE) ...
+#define table_has(TABLE, KEY) ...
+#define table_del(TABLE, KEY) ... 
+```
+
+### example
+
+```c
+#define TABLE_IMPLEMENTATION
+#include "table.h"
+#include <assert.h>
+
+int main(int argc, const char *argv[]) {
+    table_t table = table_new(); // create new table
+    table_set(&table, "test", 100); // set key "test" to 100
+    // keys can be:
+    //  - (const)? (unsigned)? char* (hashed to uint64_t)
+    //  - Any singed/unsigned int type (char, short, int, long, long long)
+    //  - void* (pointer address converted to uint64_t)
+    // values can be:
+    //  - Any singed/unsigned int type (char, short, int, long, long long)
+    //  - void* (pointer address converted to uint64_t)
+    // NOTE: void* can be any pointer, be careful if passing a reference to a stack allocation
+    int a, b;
+    table_get(&table, "test", &a); // get key "test"
+    assert(a == 100); // is it 100? yes
+    table_set(&table, a, 200);  // set the key of a (100) to 200
+    table_get(&table, 100, &b); // get key of 100
+    assert(b == 200); // is it 200? yes
+    table_free(&table); // clean up
+    return 0;
+}
+```
 
 ### TODO
 
-- [ ] Add wrapper for iset.h
-- [ ] Add wrapper for ivmap.h
-- [ ] Shrink capacity on delete?
+- [ ] Strings as values
+- [ ] Shrink capacity on delete
+- [ ] Documentation + examples
 
 ## License
 
