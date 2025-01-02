@@ -80,6 +80,7 @@ typedef struct table_pair {
 table_t table_new(void);
 table_t table_make(table_hash hashfn, uint32_t capacity, uint64_t seed);
 void table_free(table_t *table);
+void table_each(table_t *table, int(*callback)(table_pair_t *pair, void*), void *userdata);
 
 // BEGIN HEADER
 
