@@ -95,12 +95,12 @@ with open("table.h", 'w') as f:
                 if n == "get":
                     printf(f"\t{vk} tmp_out = {'NULL' if vk in other_types else '0' };")
                     printf("\tint result = 1;")
-                    printf("\tif (!int_map_has(&table->vmap, k)) {")
+                    printf("\tif (!unordered_map_has(&table->vmap, k)) {")
                     printf("\t\tresult = 0;")
                     printf("\t\tgoto BAIL;")
                     printf("\t}")
                     printf("\tuint64_t tmp;")
-                    printf("\tif (!(result = int_map_get(&table->vmap, k, &tmp)))")
+                    printf("\tif (!(result = unordered_map_get(&table->vmap, k, &tmp)))")
                     printf("\t\tgoto BAIL;")
                     printf(f"\ttmp_out = ({vk})tmp;")
                     printf("BAIL:")
@@ -109,11 +109,11 @@ with open("table.h", 'w') as f:
                     printf("\treturn result;")
                 else:
                     if kk in str_types:
-                        printf("\tif (!int_map_has(&table->vmap, k)) {")
+                        printf("\tif (!unordered_map_has(&table->vmap, k)) {")
                         printf("\t\tconst char *dup = strdup((const char*)key);")
-                        printf("\t\tint_map_set(&table->kmap, k, (uint64_t)dup);")
+                        printf("\t\tunordered_map_set(&table->kmap, k, (uint64_t)dup);")
                         printf("\t}")
-                    printf("\treturn int_map_set(&table->vmap, k, (uint64_t)val);")
+                    printf("\treturn unordered_map_set(&table->vmap, k, (uint64_t)val);")
                 printf("}\n")
                 
     for n in ["has", "del"]:
@@ -124,17 +124,17 @@ with open("table.h", 'w') as f:
             printf(f"int {fn}(table_t *table, {kk} key) " + "{")
             print_key(kk)
             if n == "has":
-                printf("\treturn int_map_has(&table->vmap, k);")
+                printf("\treturn unordered_map_has(&table->vmap, k);")
             else:
-                printf("\tif (!int_map_has(&table->vmap, k))")
+                printf("\tif (!unordered_map_has(&table->vmap, k))")
                 printf("\t\treturn 0;")
-                printf("\tif (!int_map_del(&table->vmap, k))")
+                printf("\tif (!unordered_map_del(&table->vmap, k))")
                 printf("\t\treturn 0;")
                 printf("\tuint64_t tmp;")
-                printf("\tif (!int_map_get(&table->kmap, k, &tmp))")
+                printf("\tif (!unordered_map_get(&table->kmap, k, &tmp))")
                 printf("\t\treturn 0;")
                 printf("\tfree((void*)tmp);")
-                printf("\treturn int_map_del(&table->kmap, k);")
+                printf("\treturn unordered_map_del(&table->kmap, k);")
             printf("}\n")
     
     printf("// END SOURCE\n")
