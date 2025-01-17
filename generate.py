@@ -49,7 +49,7 @@ with open("table.h", 'w') as f:
         for kk, kv in key_types.items():
             lines.append(f"\t\t{kk}: _Generic((VALUE), \\\n" + ", \\\n".join([f"\t\t\t{vk if n == 'set' else vk + '*'}: __table_{n}_{kv}_{vv}" for vk, vv in val_types.items()]))
         printf("), \\\n".join(lines) + ") \\")
-        printf("\t(TABLE,KEY,VALUE)\n")
+        printf("\t)(TABLE,KEY,VALUE)\n")
 
     for n in ["has", "del"]:
         printf(f"#define table_{n}(TABLE, KEY) \\")
