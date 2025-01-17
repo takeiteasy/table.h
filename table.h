@@ -266,7 +266,7 @@ void table_each(table_t *table, int(*callback)(table_pair_t *pair, void*), void 
 			unsigned long*: __table_get_v_ul32, \
 			unsigned long long*: __table_get_v_u64, \
 			void**: __table_get_v_v) \
-	)(TABLE,KEY,VALUE)
+	(TABLE,KEY,VALUE)
 
 #define table_set(TABLE, KEY, VALUE) \
 	_Generic((KEY), \
@@ -450,7 +450,7 @@ void table_each(table_t *table, int(*callback)(table_pair_t *pair, void*), void 
 			unsigned long: __table_set_v_ul32, \
 			unsigned long long: __table_set_v_u64, \
 			void*: __table_set_v_v) \
-	)(TABLE,KEY,VALUE)
+	(TABLE,KEY,VALUE)
 
 #define table_has(TABLE, KEY) \
 	_Generic((KEY), \
@@ -469,7 +469,7 @@ void table_each(table_t *table, int(*callback)(table_pair_t *pair, void*), void 
 		unsigned long: __table_has_ul32, \
 		unsigned long long: __table_has_u64, \
 		void*: __table_has_v) \
-	)(TABLE,KEY)
+	(TABLE,KEY)
 
 #define table_del(TABLE, KEY) \
 	_Generic((KEY), \
@@ -488,7 +488,7 @@ void table_each(table_t *table, int(*callback)(table_pair_t *pair, void*), void 
 		unsigned long: __table_del_ul32, \
 		unsigned long long: __table_del_u64, \
 		void*: __table_del_v) \
-	)(TABLE,KEY)
+	(TABLE,KEY)
 
 int __table_get_c_s8(table_t *table, char* key, char* val);
 int __table_get_c_s16(table_t *table, char* key, short* val);
@@ -5719,5 +5719,6 @@ int __table_del_v(table_t *table, void* key) {
 }
 
 // END SOURCE
+
 
 #endif
