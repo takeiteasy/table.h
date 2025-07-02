@@ -281,7 +281,8 @@ void table_each(table_t *table, int(*callback)(table_pair_t *pair, void*), void 
 			unsigned int: __table_set_c_u32, \
 			unsigned long: __table_set_c_ul32, \
 			unsigned long long: __table_set_c_u64, \
-			void*: __table_set_c_v), \
+			void*: __table_set_c_v, \
+			default: __table_set_c_v), \
 		const char*: _Generic((VALUE), \
 			char: __table_set_cc_s8, \
 			short: __table_set_cc_s16, \
@@ -293,7 +294,8 @@ void table_each(table_t *table, int(*callback)(table_pair_t *pair, void*), void 
 			unsigned int: __table_set_cc_u32, \
 			unsigned long: __table_set_cc_ul32, \
 			unsigned long long: __table_set_cc_u64, \
-			void*: __table_set_cc_v), \
+			void*: __table_set_cc_v, \
+			default: __table_set_cc_v), \
 		unsigned char*: _Generic((VALUE), \
 			char: __table_set_uc_s8, \
 			short: __table_set_uc_s16, \
@@ -305,7 +307,8 @@ void table_each(table_t *table, int(*callback)(table_pair_t *pair, void*), void 
 			unsigned int: __table_set_uc_u32, \
 			unsigned long: __table_set_uc_ul32, \
 			unsigned long long: __table_set_uc_u64, \
-			void*: __table_set_uc_v), \
+			void*: __table_set_uc_v, \
+			default: __table_set_uc_v), \
 		const unsigned char*: _Generic((VALUE), \
 			char: __table_set_cuc_s8, \
 			short: __table_set_cuc_s16, \
@@ -317,7 +320,8 @@ void table_each(table_t *table, int(*callback)(table_pair_t *pair, void*), void 
 			unsigned int: __table_set_cuc_u32, \
 			unsigned long: __table_set_cuc_ul32, \
 			unsigned long long: __table_set_cuc_u64, \
-			void*: __table_set_cuc_v), \
+			void*: __table_set_cuc_v, \
+			default: __table_set_cuc_v), \
 		char: _Generic((VALUE), \
 			char: __table_set_s8_s8, \
 			short: __table_set_s8_s16, \
@@ -329,7 +333,8 @@ void table_each(table_t *table, int(*callback)(table_pair_t *pair, void*), void 
 			unsigned int: __table_set_s8_u32, \
 			unsigned long: __table_set_s8_ul32, \
 			unsigned long long: __table_set_s8_u64, \
-			void*: __table_set_s8_v), \
+			void*: __table_set_s8_v, \
+			default: __table_set_s8_v), \
 		short: _Generic((VALUE), \
 			char: __table_set_s16_s8, \
 			short: __table_set_s16_s16, \
@@ -341,7 +346,8 @@ void table_each(table_t *table, int(*callback)(table_pair_t *pair, void*), void 
 			unsigned int: __table_set_s16_u32, \
 			unsigned long: __table_set_s16_ul32, \
 			unsigned long long: __table_set_s16_u64, \
-			void*: __table_set_s16_v), \
+			void*: __table_set_s16_v, \
+			default: __table_set_s16_v), \
 		int: _Generic((VALUE), \
 			char: __table_set_s32_s8, \
 			short: __table_set_s32_s16, \
@@ -353,7 +359,8 @@ void table_each(table_t *table, int(*callback)(table_pair_t *pair, void*), void 
 			unsigned int: __table_set_s32_u32, \
 			unsigned long: __table_set_s32_ul32, \
 			unsigned long long: __table_set_s32_u64, \
-			void*: __table_set_s32_v), \
+			void*: __table_set_s32_v, \
+			default: __table_set_s32_v), \
 		long: _Generic((VALUE), \
 			char: __table_set_sl32_s8, \
 			short: __table_set_sl32_s16, \
@@ -365,7 +372,8 @@ void table_each(table_t *table, int(*callback)(table_pair_t *pair, void*), void 
 			unsigned int: __table_set_sl32_u32, \
 			unsigned long: __table_set_sl32_ul32, \
 			unsigned long long: __table_set_sl32_u64, \
-			void*: __table_set_sl32_v), \
+			void*: __table_set_sl32_v, \
+			default: __table_set_sl32_v), \
 		long long: _Generic((VALUE), \
 			char: __table_set_s64_s8, \
 			short: __table_set_s64_s16, \
@@ -377,7 +385,8 @@ void table_each(table_t *table, int(*callback)(table_pair_t *pair, void*), void 
 			unsigned int: __table_set_s64_u32, \
 			unsigned long: __table_set_s64_ul32, \
 			unsigned long long: __table_set_s64_u64, \
-			void*: __table_set_s64_v), \
+			void*: __table_set_s64_v, \
+			default: __table_set_s64_v), \
 		unsigned char: _Generic((VALUE), \
 			char: __table_set_u8_s8, \
 			short: __table_set_u8_s16, \
@@ -389,7 +398,8 @@ void table_each(table_t *table, int(*callback)(table_pair_t *pair, void*), void 
 			unsigned int: __table_set_u8_u32, \
 			unsigned long: __table_set_u8_ul32, \
 			unsigned long long: __table_set_u8_u64, \
-			void*: __table_set_u8_v), \
+			void*: __table_set_u8_v, \
+			default: __table_set_u8_v), \
 		unsigned short: _Generic((VALUE), \
 			char: __table_set_u16_s8, \
 			short: __table_set_u16_s16, \
@@ -401,7 +411,8 @@ void table_each(table_t *table, int(*callback)(table_pair_t *pair, void*), void 
 			unsigned int: __table_set_u16_u32, \
 			unsigned long: __table_set_u16_ul32, \
 			unsigned long long: __table_set_u16_u64, \
-			void*: __table_set_u16_v), \
+			void*: __table_set_u16_v, \
+			default: __table_set_u16_v), \
 		unsigned int: _Generic((VALUE), \
 			char: __table_set_u32_s8, \
 			short: __table_set_u32_s16, \
@@ -413,7 +424,8 @@ void table_each(table_t *table, int(*callback)(table_pair_t *pair, void*), void 
 			unsigned int: __table_set_u32_u32, \
 			unsigned long: __table_set_u32_ul32, \
 			unsigned long long: __table_set_u32_u64, \
-			void*: __table_set_u32_v), \
+			void*: __table_set_u32_v, \
+			default: __table_set_u32_v), \
 		unsigned long: _Generic((VALUE), \
 			char: __table_set_ul32_s8, \
 			short: __table_set_ul32_s16, \
@@ -425,7 +437,8 @@ void table_each(table_t *table, int(*callback)(table_pair_t *pair, void*), void 
 			unsigned int: __table_set_ul32_u32, \
 			unsigned long: __table_set_ul32_ul32, \
 			unsigned long long: __table_set_ul32_u64, \
-			void*: __table_set_ul32_v), \
+			void*: __table_set_ul32_v, \
+			default: __table_set_ul32_v), \
 		unsigned long long: _Generic((VALUE), \
 			char: __table_set_u64_s8, \
 			short: __table_set_u64_s16, \
@@ -437,7 +450,8 @@ void table_each(table_t *table, int(*callback)(table_pair_t *pair, void*), void 
 			unsigned int: __table_set_u64_u32, \
 			unsigned long: __table_set_u64_ul32, \
 			unsigned long long: __table_set_u64_u64, \
-			void*: __table_set_u64_v), \
+			void*: __table_set_u64_v, \
+			default: __table_set_u64_v), \
 		void*: _Generic((VALUE), \
 			char: __table_set_v_s8, \
 			short: __table_set_v_s16, \
@@ -449,7 +463,8 @@ void table_each(table_t *table, int(*callback)(table_pair_t *pair, void*), void 
 			unsigned int: __table_set_v_u32, \
 			unsigned long: __table_set_v_ul32, \
 			unsigned long long: __table_set_v_u64, \
-			void*: __table_set_v_v) \
+			void*: __table_set_v_v, \
+			default: __table_set_v_v) \
 	)(TABLE,KEY,VALUE)
 
 #define table_has(TABLE, KEY) \
@@ -468,7 +483,8 @@ void table_each(table_t *table, int(*callback)(table_pair_t *pair, void*), void 
 		unsigned int: __table_has_u32, \
 		unsigned long: __table_has_ul32, \
 		unsigned long long: __table_has_u64, \
-		void*: __table_has_v) \
+		void*: __table_has_v, \
+		default: __table_has_v) \
 	(TABLE,KEY)
 
 #define table_del(TABLE, KEY) \
@@ -487,7 +503,8 @@ void table_each(table_t *table, int(*callback)(table_pair_t *pair, void*), void 
 		unsigned int: __table_del_u32, \
 		unsigned long: __table_del_ul32, \
 		unsigned long long: __table_del_u64, \
-		void*: __table_del_v) \
+		void*: __table_del_v, \
+		default: __table_del_v) \
 	(TABLE,KEY)
 
 int __table_get_c_s8(table_t *table, char* key, char* val);
@@ -5719,6 +5736,11 @@ int __table_del_v(table_t *table, void* key) {
 }
 
 // END SOURCE
+
+
+
+
+
 
 
 

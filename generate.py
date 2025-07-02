@@ -38,23 +38,28 @@ with open("table.h", 'r') as f:
 with open("table.h", 'w') as f:
     def printf(msg):
         print(msg, file=f)
-    
+
     printf("\n".join(og_lines[0]))
     printf("// BEGIN HEADER\n")
-    
+
     for n in ["get", "set"]:
         printf(f"#define table_{n}(TABLE, KEY, VALUE) \\")
         printf("\t_Generic((KEY), \\")
         lines = []
         for kk, kv in key_types.items():
-            lines.append(f"\t\t{kk}: _Generic((VALUE), \\\n" + ", \\\n".join([f"\t\t\t{vk if n == 'set' else vk + '*'}: __table_{n}_{kv}_{vv}" for vk, vv in val_types.items()]))
+            types = [f"\t\t\t{vk if n == 'set' else vk + '*'}: __table_{n}_{kv}_{vv}" for vk, vv in val_types.items()]
+            line = f"\t\t{kk}: _Generic((VALUE), \\\n" + ", \\\n".join(types)
+            if n == "set":
+                line += f", \\\n\t\t\tdefault: __table_{n}_{kv}_v"
+            lines.append(line)
         printf("), \\\n".join(lines) + ") \\")
         printf("\t)(TABLE,KEY,VALUE)\n")
 
     for n in ["has", "del"]:
         printf(f"#define table_{n}(TABLE, KEY) \\")
         printf("\t_Generic((KEY), \\")
-        printf(", \\\n".join([f"\t\t{kk}: __table_{n}_{kv}" for kk, kv in key_types.items()]) + ") \\")
+        keys = key_types | {"default": "v"}
+        printf(", \\\n".join([f"\t\t{kk}: __table_{n}_{kv}" for kk, kv in keys.items()]) + ") \\")
         printf("\t(TABLE,KEY)\n")
 
     for n in ["get", "set"]:
@@ -73,7 +78,7 @@ with open("table.h", 'w') as f:
                 functions.append(fn)
                 printf(f"int __table_{n}_{kv}(table_t *table, {kk} key);")
         printf("")
-    
+
     printf("// END HEADER")
     printf("\n".join(og_lines[2]))
     printf("// BEGIN SOURCE\n")
@@ -115,7 +120,7 @@ with open("table.h", 'w') as f:
                         printf("\t}")
                     printf("\treturn unordered_map_set(&table->vmap, k, (uint64_t)val);")
                 printf("}\n")
-                
+
     for n in ["has", "del"]:
         for kk, kv in key_types.items():
             fn = f"__table_{n}_{kv}"
@@ -136,6 +141,6 @@ with open("table.h", 'w') as f:
                 printf("\tfree((void*)tmp);")
                 printf("\treturn unordered_map_del(&table->kmap, k);")
             printf("}\n")
-    
+
     printf("// END SOURCE\n")
     printf("\n".join(og_lines[4]))
