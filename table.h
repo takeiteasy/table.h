@@ -28,6 +28,7 @@ extern "C" {
 
 #include <stdint.h>
 #include <stddef.h>
+#include <stdbool.h>
 
 #if !defined(TABLE_ALLOC)
 #define TABLE_ALLOC malloc
@@ -42,32 +43,30 @@ extern "C" {
 
 typedef struct imap_node_t imap_node_t;
 
-typedef struct unordered_map_pair {
-    uint64_t key, *val;
-} unordered_map_pair_t;
-
-typedef uint64_t(*table_hash)(const void *data, size_t len, uint32_t seed);
-typedef int(*unordered_map_iter_cb)(unordered_map_pair_t *pair, void *userdata);
-
-typedef struct int_map {
-    imap_node_t *tree;
+typedef struct imap_t {
+	imap_node_t *tree;
     size_t count, capacity;
-} unordered_map_t;
+} imap_t;
 
-unordered_map_t unordered_map_new(void);
-unordered_map_t unordered_map_make(uint32_t capacity);
-void unordered_map_free(unordered_map_t *map);
-int unordered_map_set(unordered_map_t *map, uint64_t key, uint64_t val);
-int unordered_map_get(unordered_map_t *map, uint64_t key, uint64_t *val);
-int unordered_map_has(unordered_map_t *map, uint64_t key);
-int unordered_map_del(unordered_map_t *map, uint64_t key);
-void unordered_map_foreach(unordered_map_t *map, unordered_map_iter_cb callback, void *userdata);
+typedef uint64_t(*table_hash_fn)(const void *data, size_t len, uint32_t seed);
 
 typedef struct table {
-    unordered_map_t kmap, vmap;
-    table_hash hashfn;
+    imap_t kmap, vmap;
+    table_hash_fn hashfn;
     uint64_t seed;
 } table_t;
+
+uint64_t _table_murmur(const void *data, size_t len, uint32_t seed);
+table_t _table_make(table_hash_fn hashfn, uint32_t capacity, uint64_t seed);
+bool _table_set_int(table_t *table, uint64_t key, uint64_t value);
+bool _table_set_str(table_t *table, const char *key, uint64_t value);
+bool _table_set_void(table_t *table, void *key, uint64_t value);
+uint64_t _table_int_to_int(table_t *_, uint64_t i);
+uint64_t _table_str_to_int(table_t *table, const char *str);
+uint64_t _table_void_to_int(table_t *_, void *ptr);
+bool _table_set_int(table_t *table, uint64_t key, uint64_t value);
+bool _table_set_str(table_t *table, const char *key, uint64_t value);
+bool _table_set_void(table_t *table, void *key, uint64_t value);
 
 typedef struct table_pair {
     union {
@@ -77,802 +76,12 @@ typedef struct table_pair {
     uint64_t value;
 } table_pair_t;
 
-table_t table_new(void);
-table_t table_make(table_hash hashfn, uint32_t capacity, uint64_t seed);
+#define table() (_table_make(_table_murmur, TABLE_INITIAL_CAPACITY, 0))
 void table_free(table_t *table);
 void table_each(table_t *table, int(*callback)(table_pair_t *pair, void*), void *userdata);
 
 // BEGIN HEADER
-
-#define table_get(TABLE, KEY, VALUE) \
-	_Generic((KEY), \
-		char*: _Generic((VALUE), \
-			char*: __table_get_c_s8, \
-			short*: __table_get_c_s16, \
-			int*: __table_get_c_s32, \
-			long*: __table_get_c_sl32, \
-			long long*: __table_get_c_s64, \
-			unsigned char*: __table_get_c_u8, \
-			unsigned short*: __table_get_c_u16, \
-			unsigned int*: __table_get_c_u32, \
-			unsigned long*: __table_get_c_ul32, \
-			unsigned long long*: __table_get_c_u64, \
-			void**: __table_get_c_v), \
-		const char*: _Generic((VALUE), \
-			char*: __table_get_cc_s8, \
-			short*: __table_get_cc_s16, \
-			int*: __table_get_cc_s32, \
-			long*: __table_get_cc_sl32, \
-			long long*: __table_get_cc_s64, \
-			unsigned char*: __table_get_cc_u8, \
-			unsigned short*: __table_get_cc_u16, \
-			unsigned int*: __table_get_cc_u32, \
-			unsigned long*: __table_get_cc_ul32, \
-			unsigned long long*: __table_get_cc_u64, \
-			void**: __table_get_cc_v), \
-		unsigned char*: _Generic((VALUE), \
-			char*: __table_get_uc_s8, \
-			short*: __table_get_uc_s16, \
-			int*: __table_get_uc_s32, \
-			long*: __table_get_uc_sl32, \
-			long long*: __table_get_uc_s64, \
-			unsigned char*: __table_get_uc_u8, \
-			unsigned short*: __table_get_uc_u16, \
-			unsigned int*: __table_get_uc_u32, \
-			unsigned long*: __table_get_uc_ul32, \
-			unsigned long long*: __table_get_uc_u64, \
-			void**: __table_get_uc_v), \
-		const unsigned char*: _Generic((VALUE), \
-			char*: __table_get_cuc_s8, \
-			short*: __table_get_cuc_s16, \
-			int*: __table_get_cuc_s32, \
-			long*: __table_get_cuc_sl32, \
-			long long*: __table_get_cuc_s64, \
-			unsigned char*: __table_get_cuc_u8, \
-			unsigned short*: __table_get_cuc_u16, \
-			unsigned int*: __table_get_cuc_u32, \
-			unsigned long*: __table_get_cuc_ul32, \
-			unsigned long long*: __table_get_cuc_u64, \
-			void**: __table_get_cuc_v), \
-		char: _Generic((VALUE), \
-			char*: __table_get_s8_s8, \
-			short*: __table_get_s8_s16, \
-			int*: __table_get_s8_s32, \
-			long*: __table_get_s8_sl32, \
-			long long*: __table_get_s8_s64, \
-			unsigned char*: __table_get_s8_u8, \
-			unsigned short*: __table_get_s8_u16, \
-			unsigned int*: __table_get_s8_u32, \
-			unsigned long*: __table_get_s8_ul32, \
-			unsigned long long*: __table_get_s8_u64, \
-			void**: __table_get_s8_v), \
-		short: _Generic((VALUE), \
-			char*: __table_get_s16_s8, \
-			short*: __table_get_s16_s16, \
-			int*: __table_get_s16_s32, \
-			long*: __table_get_s16_sl32, \
-			long long*: __table_get_s16_s64, \
-			unsigned char*: __table_get_s16_u8, \
-			unsigned short*: __table_get_s16_u16, \
-			unsigned int*: __table_get_s16_u32, \
-			unsigned long*: __table_get_s16_ul32, \
-			unsigned long long*: __table_get_s16_u64, \
-			void**: __table_get_s16_v), \
-		int: _Generic((VALUE), \
-			char*: __table_get_s32_s8, \
-			short*: __table_get_s32_s16, \
-			int*: __table_get_s32_s32, \
-			long*: __table_get_s32_sl32, \
-			long long*: __table_get_s32_s64, \
-			unsigned char*: __table_get_s32_u8, \
-			unsigned short*: __table_get_s32_u16, \
-			unsigned int*: __table_get_s32_u32, \
-			unsigned long*: __table_get_s32_ul32, \
-			unsigned long long*: __table_get_s32_u64, \
-			void**: __table_get_s32_v), \
-		long: _Generic((VALUE), \
-			char*: __table_get_sl32_s8, \
-			short*: __table_get_sl32_s16, \
-			int*: __table_get_sl32_s32, \
-			long*: __table_get_sl32_sl32, \
-			long long*: __table_get_sl32_s64, \
-			unsigned char*: __table_get_sl32_u8, \
-			unsigned short*: __table_get_sl32_u16, \
-			unsigned int*: __table_get_sl32_u32, \
-			unsigned long*: __table_get_sl32_ul32, \
-			unsigned long long*: __table_get_sl32_u64, \
-			void**: __table_get_sl32_v), \
-		long long: _Generic((VALUE), \
-			char*: __table_get_s64_s8, \
-			short*: __table_get_s64_s16, \
-			int*: __table_get_s64_s32, \
-			long*: __table_get_s64_sl32, \
-			long long*: __table_get_s64_s64, \
-			unsigned char*: __table_get_s64_u8, \
-			unsigned short*: __table_get_s64_u16, \
-			unsigned int*: __table_get_s64_u32, \
-			unsigned long*: __table_get_s64_ul32, \
-			unsigned long long*: __table_get_s64_u64, \
-			void**: __table_get_s64_v), \
-		unsigned char: _Generic((VALUE), \
-			char*: __table_get_u8_s8, \
-			short*: __table_get_u8_s16, \
-			int*: __table_get_u8_s32, \
-			long*: __table_get_u8_sl32, \
-			long long*: __table_get_u8_s64, \
-			unsigned char*: __table_get_u8_u8, \
-			unsigned short*: __table_get_u8_u16, \
-			unsigned int*: __table_get_u8_u32, \
-			unsigned long*: __table_get_u8_ul32, \
-			unsigned long long*: __table_get_u8_u64, \
-			void**: __table_get_u8_v), \
-		unsigned short: _Generic((VALUE), \
-			char*: __table_get_u16_s8, \
-			short*: __table_get_u16_s16, \
-			int*: __table_get_u16_s32, \
-			long*: __table_get_u16_sl32, \
-			long long*: __table_get_u16_s64, \
-			unsigned char*: __table_get_u16_u8, \
-			unsigned short*: __table_get_u16_u16, \
-			unsigned int*: __table_get_u16_u32, \
-			unsigned long*: __table_get_u16_ul32, \
-			unsigned long long*: __table_get_u16_u64, \
-			void**: __table_get_u16_v), \
-		unsigned int: _Generic((VALUE), \
-			char*: __table_get_u32_s8, \
-			short*: __table_get_u32_s16, \
-			int*: __table_get_u32_s32, \
-			long*: __table_get_u32_sl32, \
-			long long*: __table_get_u32_s64, \
-			unsigned char*: __table_get_u32_u8, \
-			unsigned short*: __table_get_u32_u16, \
-			unsigned int*: __table_get_u32_u32, \
-			unsigned long*: __table_get_u32_ul32, \
-			unsigned long long*: __table_get_u32_u64, \
-			void**: __table_get_u32_v), \
-		unsigned long: _Generic((VALUE), \
-			char*: __table_get_ul32_s8, \
-			short*: __table_get_ul32_s16, \
-			int*: __table_get_ul32_s32, \
-			long*: __table_get_ul32_sl32, \
-			long long*: __table_get_ul32_s64, \
-			unsigned char*: __table_get_ul32_u8, \
-			unsigned short*: __table_get_ul32_u16, \
-			unsigned int*: __table_get_ul32_u32, \
-			unsigned long*: __table_get_ul32_ul32, \
-			unsigned long long*: __table_get_ul32_u64, \
-			void**: __table_get_ul32_v), \
-		unsigned long long: _Generic((VALUE), \
-			char*: __table_get_u64_s8, \
-			short*: __table_get_u64_s16, \
-			int*: __table_get_u64_s32, \
-			long*: __table_get_u64_sl32, \
-			long long*: __table_get_u64_s64, \
-			unsigned char*: __table_get_u64_u8, \
-			unsigned short*: __table_get_u64_u16, \
-			unsigned int*: __table_get_u64_u32, \
-			unsigned long*: __table_get_u64_ul32, \
-			unsigned long long*: __table_get_u64_u64, \
-			void**: __table_get_u64_v), \
-		void*: _Generic((VALUE), \
-			char*: __table_get_v_s8, \
-			short*: __table_get_v_s16, \
-			int*: __table_get_v_s32, \
-			long*: __table_get_v_sl32, \
-			long long*: __table_get_v_s64, \
-			unsigned char*: __table_get_v_u8, \
-			unsigned short*: __table_get_v_u16, \
-			unsigned int*: __table_get_v_u32, \
-			unsigned long*: __table_get_v_ul32, \
-			unsigned long long*: __table_get_v_u64, \
-			void**: __table_get_v_v) \
-	)(TABLE,KEY,VALUE)
-
-#define table_set(TABLE, KEY, VALUE) \
-	_Generic((KEY), \
-		char*: _Generic((VALUE), \
-			char: __table_set_c_s8, \
-			short: __table_set_c_s16, \
-			int: __table_set_c_s32, \
-			long: __table_set_c_sl32, \
-			long long: __table_set_c_s64, \
-			unsigned char: __table_set_c_u8, \
-			unsigned short: __table_set_c_u16, \
-			unsigned int: __table_set_c_u32, \
-			unsigned long: __table_set_c_ul32, \
-			unsigned long long: __table_set_c_u64, \
-			void*: __table_set_c_v, \
-			default: __table_set_c_v), \
-		const char*: _Generic((VALUE), \
-			char: __table_set_cc_s8, \
-			short: __table_set_cc_s16, \
-			int: __table_set_cc_s32, \
-			long: __table_set_cc_sl32, \
-			long long: __table_set_cc_s64, \
-			unsigned char: __table_set_cc_u8, \
-			unsigned short: __table_set_cc_u16, \
-			unsigned int: __table_set_cc_u32, \
-			unsigned long: __table_set_cc_ul32, \
-			unsigned long long: __table_set_cc_u64, \
-			void*: __table_set_cc_v, \
-			default: __table_set_cc_v), \
-		unsigned char*: _Generic((VALUE), \
-			char: __table_set_uc_s8, \
-			short: __table_set_uc_s16, \
-			int: __table_set_uc_s32, \
-			long: __table_set_uc_sl32, \
-			long long: __table_set_uc_s64, \
-			unsigned char: __table_set_uc_u8, \
-			unsigned short: __table_set_uc_u16, \
-			unsigned int: __table_set_uc_u32, \
-			unsigned long: __table_set_uc_ul32, \
-			unsigned long long: __table_set_uc_u64, \
-			void*: __table_set_uc_v, \
-			default: __table_set_uc_v), \
-		const unsigned char*: _Generic((VALUE), \
-			char: __table_set_cuc_s8, \
-			short: __table_set_cuc_s16, \
-			int: __table_set_cuc_s32, \
-			long: __table_set_cuc_sl32, \
-			long long: __table_set_cuc_s64, \
-			unsigned char: __table_set_cuc_u8, \
-			unsigned short: __table_set_cuc_u16, \
-			unsigned int: __table_set_cuc_u32, \
-			unsigned long: __table_set_cuc_ul32, \
-			unsigned long long: __table_set_cuc_u64, \
-			void*: __table_set_cuc_v, \
-			default: __table_set_cuc_v), \
-		char: _Generic((VALUE), \
-			char: __table_set_s8_s8, \
-			short: __table_set_s8_s16, \
-			int: __table_set_s8_s32, \
-			long: __table_set_s8_sl32, \
-			long long: __table_set_s8_s64, \
-			unsigned char: __table_set_s8_u8, \
-			unsigned short: __table_set_s8_u16, \
-			unsigned int: __table_set_s8_u32, \
-			unsigned long: __table_set_s8_ul32, \
-			unsigned long long: __table_set_s8_u64, \
-			void*: __table_set_s8_v, \
-			default: __table_set_s8_v), \
-		short: _Generic((VALUE), \
-			char: __table_set_s16_s8, \
-			short: __table_set_s16_s16, \
-			int: __table_set_s16_s32, \
-			long: __table_set_s16_sl32, \
-			long long: __table_set_s16_s64, \
-			unsigned char: __table_set_s16_u8, \
-			unsigned short: __table_set_s16_u16, \
-			unsigned int: __table_set_s16_u32, \
-			unsigned long: __table_set_s16_ul32, \
-			unsigned long long: __table_set_s16_u64, \
-			void*: __table_set_s16_v, \
-			default: __table_set_s16_v), \
-		int: _Generic((VALUE), \
-			char: __table_set_s32_s8, \
-			short: __table_set_s32_s16, \
-			int: __table_set_s32_s32, \
-			long: __table_set_s32_sl32, \
-			long long: __table_set_s32_s64, \
-			unsigned char: __table_set_s32_u8, \
-			unsigned short: __table_set_s32_u16, \
-			unsigned int: __table_set_s32_u32, \
-			unsigned long: __table_set_s32_ul32, \
-			unsigned long long: __table_set_s32_u64, \
-			void*: __table_set_s32_v, \
-			default: __table_set_s32_v), \
-		long: _Generic((VALUE), \
-			char: __table_set_sl32_s8, \
-			short: __table_set_sl32_s16, \
-			int: __table_set_sl32_s32, \
-			long: __table_set_sl32_sl32, \
-			long long: __table_set_sl32_s64, \
-			unsigned char: __table_set_sl32_u8, \
-			unsigned short: __table_set_sl32_u16, \
-			unsigned int: __table_set_sl32_u32, \
-			unsigned long: __table_set_sl32_ul32, \
-			unsigned long long: __table_set_sl32_u64, \
-			void*: __table_set_sl32_v, \
-			default: __table_set_sl32_v), \
-		long long: _Generic((VALUE), \
-			char: __table_set_s64_s8, \
-			short: __table_set_s64_s16, \
-			int: __table_set_s64_s32, \
-			long: __table_set_s64_sl32, \
-			long long: __table_set_s64_s64, \
-			unsigned char: __table_set_s64_u8, \
-			unsigned short: __table_set_s64_u16, \
-			unsigned int: __table_set_s64_u32, \
-			unsigned long: __table_set_s64_ul32, \
-			unsigned long long: __table_set_s64_u64, \
-			void*: __table_set_s64_v, \
-			default: __table_set_s64_v), \
-		unsigned char: _Generic((VALUE), \
-			char: __table_set_u8_s8, \
-			short: __table_set_u8_s16, \
-			int: __table_set_u8_s32, \
-			long: __table_set_u8_sl32, \
-			long long: __table_set_u8_s64, \
-			unsigned char: __table_set_u8_u8, \
-			unsigned short: __table_set_u8_u16, \
-			unsigned int: __table_set_u8_u32, \
-			unsigned long: __table_set_u8_ul32, \
-			unsigned long long: __table_set_u8_u64, \
-			void*: __table_set_u8_v, \
-			default: __table_set_u8_v), \
-		unsigned short: _Generic((VALUE), \
-			char: __table_set_u16_s8, \
-			short: __table_set_u16_s16, \
-			int: __table_set_u16_s32, \
-			long: __table_set_u16_sl32, \
-			long long: __table_set_u16_s64, \
-			unsigned char: __table_set_u16_u8, \
-			unsigned short: __table_set_u16_u16, \
-			unsigned int: __table_set_u16_u32, \
-			unsigned long: __table_set_u16_ul32, \
-			unsigned long long: __table_set_u16_u64, \
-			void*: __table_set_u16_v, \
-			default: __table_set_u16_v), \
-		unsigned int: _Generic((VALUE), \
-			char: __table_set_u32_s8, \
-			short: __table_set_u32_s16, \
-			int: __table_set_u32_s32, \
-			long: __table_set_u32_sl32, \
-			long long: __table_set_u32_s64, \
-			unsigned char: __table_set_u32_u8, \
-			unsigned short: __table_set_u32_u16, \
-			unsigned int: __table_set_u32_u32, \
-			unsigned long: __table_set_u32_ul32, \
-			unsigned long long: __table_set_u32_u64, \
-			void*: __table_set_u32_v, \
-			default: __table_set_u32_v), \
-		unsigned long: _Generic((VALUE), \
-			char: __table_set_ul32_s8, \
-			short: __table_set_ul32_s16, \
-			int: __table_set_ul32_s32, \
-			long: __table_set_ul32_sl32, \
-			long long: __table_set_ul32_s64, \
-			unsigned char: __table_set_ul32_u8, \
-			unsigned short: __table_set_ul32_u16, \
-			unsigned int: __table_set_ul32_u32, \
-			unsigned long: __table_set_ul32_ul32, \
-			unsigned long long: __table_set_ul32_u64, \
-			void*: __table_set_ul32_v, \
-			default: __table_set_ul32_v), \
-		unsigned long long: _Generic((VALUE), \
-			char: __table_set_u64_s8, \
-			short: __table_set_u64_s16, \
-			int: __table_set_u64_s32, \
-			long: __table_set_u64_sl32, \
-			long long: __table_set_u64_s64, \
-			unsigned char: __table_set_u64_u8, \
-			unsigned short: __table_set_u64_u16, \
-			unsigned int: __table_set_u64_u32, \
-			unsigned long: __table_set_u64_ul32, \
-			unsigned long long: __table_set_u64_u64, \
-			void*: __table_set_u64_v, \
-			default: __table_set_u64_v), \
-		void*: _Generic((VALUE), \
-			char: __table_set_v_s8, \
-			short: __table_set_v_s16, \
-			int: __table_set_v_s32, \
-			long: __table_set_v_sl32, \
-			long long: __table_set_v_s64, \
-			unsigned char: __table_set_v_u8, \
-			unsigned short: __table_set_v_u16, \
-			unsigned int: __table_set_v_u32, \
-			unsigned long: __table_set_v_ul32, \
-			unsigned long long: __table_set_v_u64, \
-			void*: __table_set_v_v, \
-			default: __table_set_v_v) \
-	)(TABLE,KEY,VALUE)
-
-#define table_has(TABLE, KEY) \
-	_Generic((KEY), \
-		char*: __table_has_c, \
-		const char*: __table_has_cc, \
-		unsigned char*: __table_has_uc, \
-		const unsigned char*: __table_has_cuc, \
-		char: __table_has_s8, \
-		short: __table_has_s16, \
-		int: __table_has_s32, \
-		long: __table_has_sl32, \
-		long long: __table_has_s64, \
-		unsigned char: __table_has_u8, \
-		unsigned short: __table_has_u16, \
-		unsigned int: __table_has_u32, \
-		unsigned long: __table_has_ul32, \
-		unsigned long long: __table_has_u64, \
-		void*: __table_has_v, \
-		default: __table_has_v) \
-	(TABLE,KEY)
-
-#define table_del(TABLE, KEY) \
-	_Generic((KEY), \
-		char*: __table_del_c, \
-		const char*: __table_del_cc, \
-		unsigned char*: __table_del_uc, \
-		const unsigned char*: __table_del_cuc, \
-		char: __table_del_s8, \
-		short: __table_del_s16, \
-		int: __table_del_s32, \
-		long: __table_del_sl32, \
-		long long: __table_del_s64, \
-		unsigned char: __table_del_u8, \
-		unsigned short: __table_del_u16, \
-		unsigned int: __table_del_u32, \
-		unsigned long: __table_del_ul32, \
-		unsigned long long: __table_del_u64, \
-		void*: __table_del_v, \
-		default: __table_del_v) \
-	(TABLE,KEY)
-
-int __table_get_c_s8(table_t *table, char* key, char* val);
-int __table_get_c_s16(table_t *table, char* key, short* val);
-int __table_get_c_s32(table_t *table, char* key, int* val);
-int __table_get_c_sl32(table_t *table, char* key, long* val);
-int __table_get_c_s64(table_t *table, char* key, long long* val);
-int __table_get_c_u8(table_t *table, char* key, unsigned char* val);
-int __table_get_c_u16(table_t *table, char* key, unsigned short* val);
-int __table_get_c_u32(table_t *table, char* key, unsigned int* val);
-int __table_get_c_ul32(table_t *table, char* key, unsigned long* val);
-int __table_get_c_u64(table_t *table, char* key, unsigned long long* val);
-int __table_get_c_v(table_t *table, char* key, void** val);
-int __table_get_cc_s8(table_t *table, const char* key, char* val);
-int __table_get_cc_s16(table_t *table, const char* key, short* val);
-int __table_get_cc_s32(table_t *table, const char* key, int* val);
-int __table_get_cc_sl32(table_t *table, const char* key, long* val);
-int __table_get_cc_s64(table_t *table, const char* key, long long* val);
-int __table_get_cc_u8(table_t *table, const char* key, unsigned char* val);
-int __table_get_cc_u16(table_t *table, const char* key, unsigned short* val);
-int __table_get_cc_u32(table_t *table, const char* key, unsigned int* val);
-int __table_get_cc_ul32(table_t *table, const char* key, unsigned long* val);
-int __table_get_cc_u64(table_t *table, const char* key, unsigned long long* val);
-int __table_get_cc_v(table_t *table, const char* key, void** val);
-int __table_get_uc_s8(table_t *table, unsigned char* key, char* val);
-int __table_get_uc_s16(table_t *table, unsigned char* key, short* val);
-int __table_get_uc_s32(table_t *table, unsigned char* key, int* val);
-int __table_get_uc_sl32(table_t *table, unsigned char* key, long* val);
-int __table_get_uc_s64(table_t *table, unsigned char* key, long long* val);
-int __table_get_uc_u8(table_t *table, unsigned char* key, unsigned char* val);
-int __table_get_uc_u16(table_t *table, unsigned char* key, unsigned short* val);
-int __table_get_uc_u32(table_t *table, unsigned char* key, unsigned int* val);
-int __table_get_uc_ul32(table_t *table, unsigned char* key, unsigned long* val);
-int __table_get_uc_u64(table_t *table, unsigned char* key, unsigned long long* val);
-int __table_get_uc_v(table_t *table, unsigned char* key, void** val);
-int __table_get_cuc_s8(table_t *table, const unsigned char* key, char* val);
-int __table_get_cuc_s16(table_t *table, const unsigned char* key, short* val);
-int __table_get_cuc_s32(table_t *table, const unsigned char* key, int* val);
-int __table_get_cuc_sl32(table_t *table, const unsigned char* key, long* val);
-int __table_get_cuc_s64(table_t *table, const unsigned char* key, long long* val);
-int __table_get_cuc_u8(table_t *table, const unsigned char* key, unsigned char* val);
-int __table_get_cuc_u16(table_t *table, const unsigned char* key, unsigned short* val);
-int __table_get_cuc_u32(table_t *table, const unsigned char* key, unsigned int* val);
-int __table_get_cuc_ul32(table_t *table, const unsigned char* key, unsigned long* val);
-int __table_get_cuc_u64(table_t *table, const unsigned char* key, unsigned long long* val);
-int __table_get_cuc_v(table_t *table, const unsigned char* key, void** val);
-int __table_get_s8_s8(table_t *table, char key, char* val);
-int __table_get_s8_s16(table_t *table, char key, short* val);
-int __table_get_s8_s32(table_t *table, char key, int* val);
-int __table_get_s8_sl32(table_t *table, char key, long* val);
-int __table_get_s8_s64(table_t *table, char key, long long* val);
-int __table_get_s8_u8(table_t *table, char key, unsigned char* val);
-int __table_get_s8_u16(table_t *table, char key, unsigned short* val);
-int __table_get_s8_u32(table_t *table, char key, unsigned int* val);
-int __table_get_s8_ul32(table_t *table, char key, unsigned long* val);
-int __table_get_s8_u64(table_t *table, char key, unsigned long long* val);
-int __table_get_s8_v(table_t *table, char key, void** val);
-int __table_get_s16_s8(table_t *table, short key, char* val);
-int __table_get_s16_s16(table_t *table, short key, short* val);
-int __table_get_s16_s32(table_t *table, short key, int* val);
-int __table_get_s16_sl32(table_t *table, short key, long* val);
-int __table_get_s16_s64(table_t *table, short key, long long* val);
-int __table_get_s16_u8(table_t *table, short key, unsigned char* val);
-int __table_get_s16_u16(table_t *table, short key, unsigned short* val);
-int __table_get_s16_u32(table_t *table, short key, unsigned int* val);
-int __table_get_s16_ul32(table_t *table, short key, unsigned long* val);
-int __table_get_s16_u64(table_t *table, short key, unsigned long long* val);
-int __table_get_s16_v(table_t *table, short key, void** val);
-int __table_get_s32_s8(table_t *table, int key, char* val);
-int __table_get_s32_s16(table_t *table, int key, short* val);
-int __table_get_s32_s32(table_t *table, int key, int* val);
-int __table_get_s32_sl32(table_t *table, int key, long* val);
-int __table_get_s32_s64(table_t *table, int key, long long* val);
-int __table_get_s32_u8(table_t *table, int key, unsigned char* val);
-int __table_get_s32_u16(table_t *table, int key, unsigned short* val);
-int __table_get_s32_u32(table_t *table, int key, unsigned int* val);
-int __table_get_s32_ul32(table_t *table, int key, unsigned long* val);
-int __table_get_s32_u64(table_t *table, int key, unsigned long long* val);
-int __table_get_s32_v(table_t *table, int key, void** val);
-int __table_get_sl32_s8(table_t *table, long key, char* val);
-int __table_get_sl32_s16(table_t *table, long key, short* val);
-int __table_get_sl32_s32(table_t *table, long key, int* val);
-int __table_get_sl32_sl32(table_t *table, long key, long* val);
-int __table_get_sl32_s64(table_t *table, long key, long long* val);
-int __table_get_sl32_u8(table_t *table, long key, unsigned char* val);
-int __table_get_sl32_u16(table_t *table, long key, unsigned short* val);
-int __table_get_sl32_u32(table_t *table, long key, unsigned int* val);
-int __table_get_sl32_ul32(table_t *table, long key, unsigned long* val);
-int __table_get_sl32_u64(table_t *table, long key, unsigned long long* val);
-int __table_get_sl32_v(table_t *table, long key, void** val);
-int __table_get_s64_s8(table_t *table, long long key, char* val);
-int __table_get_s64_s16(table_t *table, long long key, short* val);
-int __table_get_s64_s32(table_t *table, long long key, int* val);
-int __table_get_s64_sl32(table_t *table, long long key, long* val);
-int __table_get_s64_s64(table_t *table, long long key, long long* val);
-int __table_get_s64_u8(table_t *table, long long key, unsigned char* val);
-int __table_get_s64_u16(table_t *table, long long key, unsigned short* val);
-int __table_get_s64_u32(table_t *table, long long key, unsigned int* val);
-int __table_get_s64_ul32(table_t *table, long long key, unsigned long* val);
-int __table_get_s64_u64(table_t *table, long long key, unsigned long long* val);
-int __table_get_s64_v(table_t *table, long long key, void** val);
-int __table_get_u8_s8(table_t *table, unsigned char key, char* val);
-int __table_get_u8_s16(table_t *table, unsigned char key, short* val);
-int __table_get_u8_s32(table_t *table, unsigned char key, int* val);
-int __table_get_u8_sl32(table_t *table, unsigned char key, long* val);
-int __table_get_u8_s64(table_t *table, unsigned char key, long long* val);
-int __table_get_u8_u8(table_t *table, unsigned char key, unsigned char* val);
-int __table_get_u8_u16(table_t *table, unsigned char key, unsigned short* val);
-int __table_get_u8_u32(table_t *table, unsigned char key, unsigned int* val);
-int __table_get_u8_ul32(table_t *table, unsigned char key, unsigned long* val);
-int __table_get_u8_u64(table_t *table, unsigned char key, unsigned long long* val);
-int __table_get_u8_v(table_t *table, unsigned char key, void** val);
-int __table_get_u16_s8(table_t *table, unsigned short key, char* val);
-int __table_get_u16_s16(table_t *table, unsigned short key, short* val);
-int __table_get_u16_s32(table_t *table, unsigned short key, int* val);
-int __table_get_u16_sl32(table_t *table, unsigned short key, long* val);
-int __table_get_u16_s64(table_t *table, unsigned short key, long long* val);
-int __table_get_u16_u8(table_t *table, unsigned short key, unsigned char* val);
-int __table_get_u16_u16(table_t *table, unsigned short key, unsigned short* val);
-int __table_get_u16_u32(table_t *table, unsigned short key, unsigned int* val);
-int __table_get_u16_ul32(table_t *table, unsigned short key, unsigned long* val);
-int __table_get_u16_u64(table_t *table, unsigned short key, unsigned long long* val);
-int __table_get_u16_v(table_t *table, unsigned short key, void** val);
-int __table_get_u32_s8(table_t *table, unsigned int key, char* val);
-int __table_get_u32_s16(table_t *table, unsigned int key, short* val);
-int __table_get_u32_s32(table_t *table, unsigned int key, int* val);
-int __table_get_u32_sl32(table_t *table, unsigned int key, long* val);
-int __table_get_u32_s64(table_t *table, unsigned int key, long long* val);
-int __table_get_u32_u8(table_t *table, unsigned int key, unsigned char* val);
-int __table_get_u32_u16(table_t *table, unsigned int key, unsigned short* val);
-int __table_get_u32_u32(table_t *table, unsigned int key, unsigned int* val);
-int __table_get_u32_ul32(table_t *table, unsigned int key, unsigned long* val);
-int __table_get_u32_u64(table_t *table, unsigned int key, unsigned long long* val);
-int __table_get_u32_v(table_t *table, unsigned int key, void** val);
-int __table_get_ul32_s8(table_t *table, unsigned long key, char* val);
-int __table_get_ul32_s16(table_t *table, unsigned long key, short* val);
-int __table_get_ul32_s32(table_t *table, unsigned long key, int* val);
-int __table_get_ul32_sl32(table_t *table, unsigned long key, long* val);
-int __table_get_ul32_s64(table_t *table, unsigned long key, long long* val);
-int __table_get_ul32_u8(table_t *table, unsigned long key, unsigned char* val);
-int __table_get_ul32_u16(table_t *table, unsigned long key, unsigned short* val);
-int __table_get_ul32_u32(table_t *table, unsigned long key, unsigned int* val);
-int __table_get_ul32_ul32(table_t *table, unsigned long key, unsigned long* val);
-int __table_get_ul32_u64(table_t *table, unsigned long key, unsigned long long* val);
-int __table_get_ul32_v(table_t *table, unsigned long key, void** val);
-int __table_get_u64_s8(table_t *table, unsigned long long key, char* val);
-int __table_get_u64_s16(table_t *table, unsigned long long key, short* val);
-int __table_get_u64_s32(table_t *table, unsigned long long key, int* val);
-int __table_get_u64_sl32(table_t *table, unsigned long long key, long* val);
-int __table_get_u64_s64(table_t *table, unsigned long long key, long long* val);
-int __table_get_u64_u8(table_t *table, unsigned long long key, unsigned char* val);
-int __table_get_u64_u16(table_t *table, unsigned long long key, unsigned short* val);
-int __table_get_u64_u32(table_t *table, unsigned long long key, unsigned int* val);
-int __table_get_u64_ul32(table_t *table, unsigned long long key, unsigned long* val);
-int __table_get_u64_u64(table_t *table, unsigned long long key, unsigned long long* val);
-int __table_get_u64_v(table_t *table, unsigned long long key, void** val);
-int __table_get_v_s8(table_t *table, void* key, char* val);
-int __table_get_v_s16(table_t *table, void* key, short* val);
-int __table_get_v_s32(table_t *table, void* key, int* val);
-int __table_get_v_sl32(table_t *table, void* key, long* val);
-int __table_get_v_s64(table_t *table, void* key, long long* val);
-int __table_get_v_u8(table_t *table, void* key, unsigned char* val);
-int __table_get_v_u16(table_t *table, void* key, unsigned short* val);
-int __table_get_v_u32(table_t *table, void* key, unsigned int* val);
-int __table_get_v_ul32(table_t *table, void* key, unsigned long* val);
-int __table_get_v_u64(table_t *table, void* key, unsigned long long* val);
-int __table_get_v_v(table_t *table, void* key, void** val);
-
-int __table_set_c_s8(table_t *table, char* key, char val);
-int __table_set_c_s16(table_t *table, char* key, short val);
-int __table_set_c_s32(table_t *table, char* key, int val);
-int __table_set_c_sl32(table_t *table, char* key, long val);
-int __table_set_c_s64(table_t *table, char* key, long long val);
-int __table_set_c_u8(table_t *table, char* key, unsigned char val);
-int __table_set_c_u16(table_t *table, char* key, unsigned short val);
-int __table_set_c_u32(table_t *table, char* key, unsigned int val);
-int __table_set_c_ul32(table_t *table, char* key, unsigned long val);
-int __table_set_c_u64(table_t *table, char* key, unsigned long long val);
-int __table_set_c_v(table_t *table, char* key, void* val);
-int __table_set_cc_s8(table_t *table, const char* key, char val);
-int __table_set_cc_s16(table_t *table, const char* key, short val);
-int __table_set_cc_s32(table_t *table, const char* key, int val);
-int __table_set_cc_sl32(table_t *table, const char* key, long val);
-int __table_set_cc_s64(table_t *table, const char* key, long long val);
-int __table_set_cc_u8(table_t *table, const char* key, unsigned char val);
-int __table_set_cc_u16(table_t *table, const char* key, unsigned short val);
-int __table_set_cc_u32(table_t *table, const char* key, unsigned int val);
-int __table_set_cc_ul32(table_t *table, const char* key, unsigned long val);
-int __table_set_cc_u64(table_t *table, const char* key, unsigned long long val);
-int __table_set_cc_v(table_t *table, const char* key, void* val);
-int __table_set_uc_s8(table_t *table, unsigned char* key, char val);
-int __table_set_uc_s16(table_t *table, unsigned char* key, short val);
-int __table_set_uc_s32(table_t *table, unsigned char* key, int val);
-int __table_set_uc_sl32(table_t *table, unsigned char* key, long val);
-int __table_set_uc_s64(table_t *table, unsigned char* key, long long val);
-int __table_set_uc_u8(table_t *table, unsigned char* key, unsigned char val);
-int __table_set_uc_u16(table_t *table, unsigned char* key, unsigned short val);
-int __table_set_uc_u32(table_t *table, unsigned char* key, unsigned int val);
-int __table_set_uc_ul32(table_t *table, unsigned char* key, unsigned long val);
-int __table_set_uc_u64(table_t *table, unsigned char* key, unsigned long long val);
-int __table_set_uc_v(table_t *table, unsigned char* key, void* val);
-int __table_set_cuc_s8(table_t *table, const unsigned char* key, char val);
-int __table_set_cuc_s16(table_t *table, const unsigned char* key, short val);
-int __table_set_cuc_s32(table_t *table, const unsigned char* key, int val);
-int __table_set_cuc_sl32(table_t *table, const unsigned char* key, long val);
-int __table_set_cuc_s64(table_t *table, const unsigned char* key, long long val);
-int __table_set_cuc_u8(table_t *table, const unsigned char* key, unsigned char val);
-int __table_set_cuc_u16(table_t *table, const unsigned char* key, unsigned short val);
-int __table_set_cuc_u32(table_t *table, const unsigned char* key, unsigned int val);
-int __table_set_cuc_ul32(table_t *table, const unsigned char* key, unsigned long val);
-int __table_set_cuc_u64(table_t *table, const unsigned char* key, unsigned long long val);
-int __table_set_cuc_v(table_t *table, const unsigned char* key, void* val);
-int __table_set_s8_s8(table_t *table, char key, char val);
-int __table_set_s8_s16(table_t *table, char key, short val);
-int __table_set_s8_s32(table_t *table, char key, int val);
-int __table_set_s8_sl32(table_t *table, char key, long val);
-int __table_set_s8_s64(table_t *table, char key, long long val);
-int __table_set_s8_u8(table_t *table, char key, unsigned char val);
-int __table_set_s8_u16(table_t *table, char key, unsigned short val);
-int __table_set_s8_u32(table_t *table, char key, unsigned int val);
-int __table_set_s8_ul32(table_t *table, char key, unsigned long val);
-int __table_set_s8_u64(table_t *table, char key, unsigned long long val);
-int __table_set_s8_v(table_t *table, char key, void* val);
-int __table_set_s16_s8(table_t *table, short key, char val);
-int __table_set_s16_s16(table_t *table, short key, short val);
-int __table_set_s16_s32(table_t *table, short key, int val);
-int __table_set_s16_sl32(table_t *table, short key, long val);
-int __table_set_s16_s64(table_t *table, short key, long long val);
-int __table_set_s16_u8(table_t *table, short key, unsigned char val);
-int __table_set_s16_u16(table_t *table, short key, unsigned short val);
-int __table_set_s16_u32(table_t *table, short key, unsigned int val);
-int __table_set_s16_ul32(table_t *table, short key, unsigned long val);
-int __table_set_s16_u64(table_t *table, short key, unsigned long long val);
-int __table_set_s16_v(table_t *table, short key, void* val);
-int __table_set_s32_s8(table_t *table, int key, char val);
-int __table_set_s32_s16(table_t *table, int key, short val);
-int __table_set_s32_s32(table_t *table, int key, int val);
-int __table_set_s32_sl32(table_t *table, int key, long val);
-int __table_set_s32_s64(table_t *table, int key, long long val);
-int __table_set_s32_u8(table_t *table, int key, unsigned char val);
-int __table_set_s32_u16(table_t *table, int key, unsigned short val);
-int __table_set_s32_u32(table_t *table, int key, unsigned int val);
-int __table_set_s32_ul32(table_t *table, int key, unsigned long val);
-int __table_set_s32_u64(table_t *table, int key, unsigned long long val);
-int __table_set_s32_v(table_t *table, int key, void* val);
-int __table_set_sl32_s8(table_t *table, long key, char val);
-int __table_set_sl32_s16(table_t *table, long key, short val);
-int __table_set_sl32_s32(table_t *table, long key, int val);
-int __table_set_sl32_sl32(table_t *table, long key, long val);
-int __table_set_sl32_s64(table_t *table, long key, long long val);
-int __table_set_sl32_u8(table_t *table, long key, unsigned char val);
-int __table_set_sl32_u16(table_t *table, long key, unsigned short val);
-int __table_set_sl32_u32(table_t *table, long key, unsigned int val);
-int __table_set_sl32_ul32(table_t *table, long key, unsigned long val);
-int __table_set_sl32_u64(table_t *table, long key, unsigned long long val);
-int __table_set_sl32_v(table_t *table, long key, void* val);
-int __table_set_s64_s8(table_t *table, long long key, char val);
-int __table_set_s64_s16(table_t *table, long long key, short val);
-int __table_set_s64_s32(table_t *table, long long key, int val);
-int __table_set_s64_sl32(table_t *table, long long key, long val);
-int __table_set_s64_s64(table_t *table, long long key, long long val);
-int __table_set_s64_u8(table_t *table, long long key, unsigned char val);
-int __table_set_s64_u16(table_t *table, long long key, unsigned short val);
-int __table_set_s64_u32(table_t *table, long long key, unsigned int val);
-int __table_set_s64_ul32(table_t *table, long long key, unsigned long val);
-int __table_set_s64_u64(table_t *table, long long key, unsigned long long val);
-int __table_set_s64_v(table_t *table, long long key, void* val);
-int __table_set_u8_s8(table_t *table, unsigned char key, char val);
-int __table_set_u8_s16(table_t *table, unsigned char key, short val);
-int __table_set_u8_s32(table_t *table, unsigned char key, int val);
-int __table_set_u8_sl32(table_t *table, unsigned char key, long val);
-int __table_set_u8_s64(table_t *table, unsigned char key, long long val);
-int __table_set_u8_u8(table_t *table, unsigned char key, unsigned char val);
-int __table_set_u8_u16(table_t *table, unsigned char key, unsigned short val);
-int __table_set_u8_u32(table_t *table, unsigned char key, unsigned int val);
-int __table_set_u8_ul32(table_t *table, unsigned char key, unsigned long val);
-int __table_set_u8_u64(table_t *table, unsigned char key, unsigned long long val);
-int __table_set_u8_v(table_t *table, unsigned char key, void* val);
-int __table_set_u16_s8(table_t *table, unsigned short key, char val);
-int __table_set_u16_s16(table_t *table, unsigned short key, short val);
-int __table_set_u16_s32(table_t *table, unsigned short key, int val);
-int __table_set_u16_sl32(table_t *table, unsigned short key, long val);
-int __table_set_u16_s64(table_t *table, unsigned short key, long long val);
-int __table_set_u16_u8(table_t *table, unsigned short key, unsigned char val);
-int __table_set_u16_u16(table_t *table, unsigned short key, unsigned short val);
-int __table_set_u16_u32(table_t *table, unsigned short key, unsigned int val);
-int __table_set_u16_ul32(table_t *table, unsigned short key, unsigned long val);
-int __table_set_u16_u64(table_t *table, unsigned short key, unsigned long long val);
-int __table_set_u16_v(table_t *table, unsigned short key, void* val);
-int __table_set_u32_s8(table_t *table, unsigned int key, char val);
-int __table_set_u32_s16(table_t *table, unsigned int key, short val);
-int __table_set_u32_s32(table_t *table, unsigned int key, int val);
-int __table_set_u32_sl32(table_t *table, unsigned int key, long val);
-int __table_set_u32_s64(table_t *table, unsigned int key, long long val);
-int __table_set_u32_u8(table_t *table, unsigned int key, unsigned char val);
-int __table_set_u32_u16(table_t *table, unsigned int key, unsigned short val);
-int __table_set_u32_u32(table_t *table, unsigned int key, unsigned int val);
-int __table_set_u32_ul32(table_t *table, unsigned int key, unsigned long val);
-int __table_set_u32_u64(table_t *table, unsigned int key, unsigned long long val);
-int __table_set_u32_v(table_t *table, unsigned int key, void* val);
-int __table_set_ul32_s8(table_t *table, unsigned long key, char val);
-int __table_set_ul32_s16(table_t *table, unsigned long key, short val);
-int __table_set_ul32_s32(table_t *table, unsigned long key, int val);
-int __table_set_ul32_sl32(table_t *table, unsigned long key, long val);
-int __table_set_ul32_s64(table_t *table, unsigned long key, long long val);
-int __table_set_ul32_u8(table_t *table, unsigned long key, unsigned char val);
-int __table_set_ul32_u16(table_t *table, unsigned long key, unsigned short val);
-int __table_set_ul32_u32(table_t *table, unsigned long key, unsigned int val);
-int __table_set_ul32_ul32(table_t *table, unsigned long key, unsigned long val);
-int __table_set_ul32_u64(table_t *table, unsigned long key, unsigned long long val);
-int __table_set_ul32_v(table_t *table, unsigned long key, void* val);
-int __table_set_u64_s8(table_t *table, unsigned long long key, char val);
-int __table_set_u64_s16(table_t *table, unsigned long long key, short val);
-int __table_set_u64_s32(table_t *table, unsigned long long key, int val);
-int __table_set_u64_sl32(table_t *table, unsigned long long key, long val);
-int __table_set_u64_s64(table_t *table, unsigned long long key, long long val);
-int __table_set_u64_u8(table_t *table, unsigned long long key, unsigned char val);
-int __table_set_u64_u16(table_t *table, unsigned long long key, unsigned short val);
-int __table_set_u64_u32(table_t *table, unsigned long long key, unsigned int val);
-int __table_set_u64_ul32(table_t *table, unsigned long long key, unsigned long val);
-int __table_set_u64_u64(table_t *table, unsigned long long key, unsigned long long val);
-int __table_set_u64_v(table_t *table, unsigned long long key, void* val);
-int __table_set_v_s8(table_t *table, void* key, char val);
-int __table_set_v_s16(table_t *table, void* key, short val);
-int __table_set_v_s32(table_t *table, void* key, int val);
-int __table_set_v_sl32(table_t *table, void* key, long val);
-int __table_set_v_s64(table_t *table, void* key, long long val);
-int __table_set_v_u8(table_t *table, void* key, unsigned char val);
-int __table_set_v_u16(table_t *table, void* key, unsigned short val);
-int __table_set_v_u32(table_t *table, void* key, unsigned int val);
-int __table_set_v_ul32(table_t *table, void* key, unsigned long val);
-int __table_set_v_u64(table_t *table, void* key, unsigned long long val);
-int __table_set_v_v(table_t *table, void* key, void* val);
-
-int __table_has_c(table_t *table, char* key);
-int __table_has_cc(table_t *table, const char* key);
-int __table_has_uc(table_t *table, unsigned char* key);
-int __table_has_cuc(table_t *table, const unsigned char* key);
-int __table_has_s8(table_t *table, char key);
-int __table_has_s16(table_t *table, short key);
-int __table_has_s32(table_t *table, int key);
-int __table_has_sl32(table_t *table, long key);
-int __table_has_s64(table_t *table, long long key);
-int __table_has_u8(table_t *table, unsigned char key);
-int __table_has_u16(table_t *table, unsigned short key);
-int __table_has_u32(table_t *table, unsigned int key);
-int __table_has_ul32(table_t *table, unsigned long key);
-int __table_has_u64(table_t *table, unsigned long long key);
-int __table_has_v(table_t *table, void* key);
-
-int __table_del_c(table_t *table, char* key);
-int __table_del_cc(table_t *table, const char* key);
-int __table_del_uc(table_t *table, unsigned char* key);
-int __table_del_cuc(table_t *table, const unsigned char* key);
-int __table_del_s8(table_t *table, char key);
-int __table_del_s16(table_t *table, short key);
-int __table_del_s32(table_t *table, int key);
-int __table_del_sl32(table_t *table, long key);
-int __table_del_s64(table_t *table, long long key);
-int __table_del_u8(table_t *table, unsigned char key);
-int __table_del_u16(table_t *table, unsigned short key);
-int __table_del_u32(table_t *table, unsigned int key);
-int __table_del_ul32(table_t *table, unsigned long key);
-int __table_del_u64(table_t *table, unsigned long long key);
-int __table_del_v(table_t *table, void* key);
-
 // END HEADER
-
 
 #if defined(__cplusplus)
 }
@@ -1281,27 +490,25 @@ static imap_pair_t imap_iterate(imap_node_t *tree, imap_iter_t *iter, int restar
     return imap__pair_zero__;
 }
 
-unordered_map_t unordered_map_new(void) {
-    return unordered_map_make(TABLE_INITIAL_CAPACITY);
-}
 
-#define CAPACITY(C) ((C) > TABLE_INITIAL_CAPACITY ? (C) : TABLE_INITIAL_CAPACITY)
+#define IMAP(C) \
+	(imap_t) { \
+        .capacity = cap, \
+        .count = 0, \
+        .tree = imap_ensure(NULL, (C) > TABLE_INITIAL_CAPACITY ? (C) : TABLE_INITIAL_CAPACITY) \
+    }
 
-unordered_map_t unordered_map_make(uint32_t capacity) {
-    uint64_t cap = CAPACITY(capacity);
-    return (unordered_map_t) {
-        .capacity = cap,
-        .count = 0,
-        .tree = imap_ensure(NULL, cap)
-    };
-}
+#define IMAP_FREE(MAP) \
+	do { \
+		if ((MAP)) { \
+			IMAP_ALIGNED_FREE((MAP)->tree); \
+			memset((MAP), 0, sizeof(imap_t)); \
+		} \
+	} while(0)
 
-void unordered_map_free(unordered_map_t *map) {
-    IMAP_ALIGNED_FREE(map->tree);
-    memset(map, 0, sizeof(unordered_map_t));
-}
+#define IMAP_HAS(MAP, KEY) (imap_lookup((MAP)->tree, (KEY)) != NULL)
 
-int unordered_map_set(unordered_map_t *map, uint64_t key, uint64_t val) {
+static int imap_set(imap_t *map, uint64_t key, uint64_t val) {
     uint32_t *slot = imap_lookup(map->tree, key);
     if (slot) {
         imap_setval64(map->tree, slot, val);
@@ -1318,7 +525,7 @@ int unordered_map_set(unordered_map_t *map, uint64_t key, uint64_t val) {
     return 1;
 }
 
-int unordered_map_get(unordered_map_t *map, uint64_t key, uint64_t *val) {
+static int imap_get(imap_t *map, uint64_t key, uint64_t *val) {
     uint32_t *slot = imap_lookup(map->tree, key);
     if (!slot)
         return 0;
@@ -1327,11 +534,7 @@ int unordered_map_get(unordered_map_t *map, uint64_t key, uint64_t *val) {
     return 1;
 }
 
-int unordered_map_has(unordered_map_t *map, uint64_t key) {
-    return imap_lookup(map->tree, key) != NULL;
-}
-
-int unordered_map_del(unordered_map_t *map, uint64_t key) {
+static int imap_del(imap_t *map, uint64_t key) {
     if (!map->count)
         return 0;
     uint32_t *slot = imap_lookup(map->tree, key);
@@ -1340,25 +543,6 @@ int unordered_map_del(unordered_map_t *map, uint64_t key) {
     imap_remove(map->tree, key);
     map->count--;
     return 1;
-}
-
-void unordered_map_foreach(unordered_map_t *map, unordered_map_iter_cb callback, void *userdata) {
-    imap_iter_t iter;
-    imap_pair_t pair = imap_iterate(map->tree, &iter, 1);
-    size_t i = 0;
-    for (;;) {
-        if (!pair.slot)
-            break;
-        uint64_t val = imap_getval64(map->tree, pair.slot);
-        unordered_map_pair_t p = {
-            .key = pair.x,
-            .val = &val
-        };
-        if (!callback(&p, userdata))
-            break;
-        else
-            pair = imap_iterate(map->tree, &iter, 0);
-    }
 }
 
 static void MM86128(const void *key, const int len, uint32_t seed, void *out) {
@@ -1442,29 +626,51 @@ static void MM86128(const void *key, const int len, uint32_t seed, void *out) {
     ((uint32_t*)out)[3] = h4;
 }
 
-static uint64_t murmur(const void *data, size_t len, uint32_t seed) {
+uint64_t _table_murmur(const void *data, size_t len, uint32_t seed) {
     char out[16];
     MM86128(data, (int)len, (uint32_t)seed, &out);
     return *(uint64_t*)out;
 }
 
-table_t table_new(void) {
-    return table_make(murmur, TABLE_INITIAL_CAPACITY, 0);
-}
-
-table_t table_make(table_hash hashfn, uint32_t capacity, uint64_t seed) {
-    uint64_t cap = CAPACITY(capacity);
+table_t _table_make(table_hash_fn hashfn, uint32_t capacity, uint64_t seed) {
+    uint64_t cap = capacity > TABLE_INITIAL_CAPACITY ? capacity : TABLE_INITIAL_CAPACITY;
     return (table_t) {
         .hashfn = hashfn,
         .seed = seed ? seed : (uint64_t)time(NULL),
-        .kmap = unordered_map_make(cap),
-        .vmap = unordered_map_make(cap)
+        .kmap = IMAP(cap),
+        .vmap = IMAP(cap)
     };
 }
 
+uint64_t _table_int_to_int(table_t *_, uint64_t i) {
+	return i;
+}
+
+#define _HASH(T, STR) (!(T)->hashfn ? -1LL : (T)->hashfn((void*)(STR), strlen((STR)), (T)->seed))
+
+uint64_t _table_str_to_int(table_t *table, const char *str) {
+	return _HASH(table, str);
+}
+
+uint64_t _table_void_to_int(table_t *_, void *ptr) {
+	return (uintptr_t)ptr;
+}
+
+bool _table_set_int(table_t *table, uint64_t key, uint64_t value) {
+	return imap_set(&table->vmap, key, value);
+}
+
+bool _table_set_str(table_t *table, const char *key, uint64_t value) {
+	return _HASH(table, key) != -1;
+}
+
+bool _table_set_void(table_t *table, void *key, uint64_t value) {
+	return _table_set_int(table, (uintptr_t)key, value);
+}
+
 void table_free(table_t *table) {
-    unordered_map_free(&table->kmap);
-    unordered_map_free(&table->vmap);
+    IMAP_FREE(&table->kmap);
+    IMAP_FREE(&table->vmap);
     memset(table, 0, sizeof(table_t));
 }
 
@@ -1477,11 +683,11 @@ void table_each(table_t *table, int(*callback)(table_pair_t *pair, void*), void 
         if (!pair.slot)
             break;
         uint64_t tmp;
-        if (unordered_map_get(&table->kmap, pair.x, &tmp))
+        if (imap_get(&table->kmap, pair.x, &tmp))
             p.key.string = (const char*)tmp;
         else
             p.key.integer = (uint64_t)pair.x;
-        if (!unordered_map_get(&table->vmap, pair.x, &tmp))
+        if (!imap_get(&table->vmap, pair.x, &tmp))
             continue;
         p.value = tmp;
         int result = callback(&p, userdata);
@@ -1498,12 +704,12 @@ int __table_get_c_s8(table_t *table, char* key, char* val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	char tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (char)tmp;
 BAIL:
@@ -1516,12 +722,12 @@ int __table_get_c_s16(table_t *table, char* key, short* val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	short tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (short)tmp;
 BAIL:
@@ -1534,12 +740,12 @@ int __table_get_c_s32(table_t *table, char* key, int* val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	int tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (int)tmp;
 BAIL:
@@ -1552,12 +758,12 @@ int __table_get_c_sl32(table_t *table, char* key, long* val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (long)tmp;
 BAIL:
@@ -1570,12 +776,12 @@ int __table_get_c_s64(table_t *table, char* key, long long* val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	long long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (long long)tmp;
 BAIL:
@@ -1588,12 +794,12 @@ int __table_get_c_u8(table_t *table, char* key, unsigned char* val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	unsigned char tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned char)tmp;
 BAIL:
@@ -1606,12 +812,12 @@ int __table_get_c_u16(table_t *table, char* key, unsigned short* val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	unsigned short tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned short)tmp;
 BAIL:
@@ -1624,12 +830,12 @@ int __table_get_c_u32(table_t *table, char* key, unsigned int* val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	unsigned int tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned int)tmp;
 BAIL:
@@ -1642,12 +848,12 @@ int __table_get_c_ul32(table_t *table, char* key, unsigned long* val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	unsigned long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned long)tmp;
 BAIL:
@@ -1660,12 +866,12 @@ int __table_get_c_u64(table_t *table, char* key, unsigned long long* val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	unsigned long long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned long long)tmp;
 BAIL:
@@ -1678,12 +884,12 @@ int __table_get_c_v(table_t *table, char* key, void** val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	void* tmp_out = NULL;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (void*)tmp;
 BAIL:
@@ -1696,12 +902,12 @@ int __table_get_cc_s8(table_t *table, const char* key, char* val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	char tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (char)tmp;
 BAIL:
@@ -1714,12 +920,12 @@ int __table_get_cc_s16(table_t *table, const char* key, short* val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	short tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (short)tmp;
 BAIL:
@@ -1732,12 +938,12 @@ int __table_get_cc_s32(table_t *table, const char* key, int* val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	int tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (int)tmp;
 BAIL:
@@ -1750,12 +956,12 @@ int __table_get_cc_sl32(table_t *table, const char* key, long* val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (long)tmp;
 BAIL:
@@ -1768,12 +974,12 @@ int __table_get_cc_s64(table_t *table, const char* key, long long* val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	long long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (long long)tmp;
 BAIL:
@@ -1786,12 +992,12 @@ int __table_get_cc_u8(table_t *table, const char* key, unsigned char* val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	unsigned char tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned char)tmp;
 BAIL:
@@ -1804,12 +1010,12 @@ int __table_get_cc_u16(table_t *table, const char* key, unsigned short* val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	unsigned short tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned short)tmp;
 BAIL:
@@ -1822,12 +1028,12 @@ int __table_get_cc_u32(table_t *table, const char* key, unsigned int* val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	unsigned int tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned int)tmp;
 BAIL:
@@ -1840,12 +1046,12 @@ int __table_get_cc_ul32(table_t *table, const char* key, unsigned long* val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	unsigned long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned long)tmp;
 BAIL:
@@ -1858,12 +1064,12 @@ int __table_get_cc_u64(table_t *table, const char* key, unsigned long long* val)
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	unsigned long long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned long long)tmp;
 BAIL:
@@ -1876,12 +1082,12 @@ int __table_get_cc_v(table_t *table, const char* key, void** val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	void* tmp_out = NULL;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (void*)tmp;
 BAIL:
@@ -1894,12 +1100,12 @@ int __table_get_uc_s8(table_t *table, unsigned char* key, char* val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	char tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (char)tmp;
 BAIL:
@@ -1912,12 +1118,12 @@ int __table_get_uc_s16(table_t *table, unsigned char* key, short* val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	short tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (short)tmp;
 BAIL:
@@ -1930,12 +1136,12 @@ int __table_get_uc_s32(table_t *table, unsigned char* key, int* val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	int tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (int)tmp;
 BAIL:
@@ -1948,12 +1154,12 @@ int __table_get_uc_sl32(table_t *table, unsigned char* key, long* val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (long)tmp;
 BAIL:
@@ -1966,12 +1172,12 @@ int __table_get_uc_s64(table_t *table, unsigned char* key, long long* val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	long long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (long long)tmp;
 BAIL:
@@ -1984,12 +1190,12 @@ int __table_get_uc_u8(table_t *table, unsigned char* key, unsigned char* val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	unsigned char tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned char)tmp;
 BAIL:
@@ -2002,12 +1208,12 @@ int __table_get_uc_u16(table_t *table, unsigned char* key, unsigned short* val) 
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	unsigned short tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned short)tmp;
 BAIL:
@@ -2020,12 +1226,12 @@ int __table_get_uc_u32(table_t *table, unsigned char* key, unsigned int* val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	unsigned int tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned int)tmp;
 BAIL:
@@ -2038,12 +1244,12 @@ int __table_get_uc_ul32(table_t *table, unsigned char* key, unsigned long* val) 
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	unsigned long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned long)tmp;
 BAIL:
@@ -2056,12 +1262,12 @@ int __table_get_uc_u64(table_t *table, unsigned char* key, unsigned long long* v
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	unsigned long long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned long long)tmp;
 BAIL:
@@ -2074,12 +1280,12 @@ int __table_get_uc_v(table_t *table, unsigned char* key, void** val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	void* tmp_out = NULL;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (void*)tmp;
 BAIL:
@@ -2092,12 +1298,12 @@ int __table_get_cuc_s8(table_t *table, const unsigned char* key, char* val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	char tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (char)tmp;
 BAIL:
@@ -2110,12 +1316,12 @@ int __table_get_cuc_s16(table_t *table, const unsigned char* key, short* val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	short tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (short)tmp;
 BAIL:
@@ -2128,12 +1334,12 @@ int __table_get_cuc_s32(table_t *table, const unsigned char* key, int* val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	int tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (int)tmp;
 BAIL:
@@ -2146,12 +1352,12 @@ int __table_get_cuc_sl32(table_t *table, const unsigned char* key, long* val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (long)tmp;
 BAIL:
@@ -2164,12 +1370,12 @@ int __table_get_cuc_s64(table_t *table, const unsigned char* key, long long* val
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	long long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (long long)tmp;
 BAIL:
@@ -2182,12 +1388,12 @@ int __table_get_cuc_u8(table_t *table, const unsigned char* key, unsigned char* 
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	unsigned char tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned char)tmp;
 BAIL:
@@ -2200,12 +1406,12 @@ int __table_get_cuc_u16(table_t *table, const unsigned char* key, unsigned short
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	unsigned short tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned short)tmp;
 BAIL:
@@ -2218,12 +1424,12 @@ int __table_get_cuc_u32(table_t *table, const unsigned char* key, unsigned int* 
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	unsigned int tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned int)tmp;
 BAIL:
@@ -2236,12 +1442,12 @@ int __table_get_cuc_ul32(table_t *table, const unsigned char* key, unsigned long
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	unsigned long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned long)tmp;
 BAIL:
@@ -2254,12 +1460,12 @@ int __table_get_cuc_u64(table_t *table, const unsigned char* key, unsigned long 
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	unsigned long long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned long long)tmp;
 BAIL:
@@ -2272,12 +1478,12 @@ int __table_get_cuc_v(table_t *table, const unsigned char* key, void** val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
 	void* tmp_out = NULL;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (void*)tmp;
 BAIL:
@@ -2290,12 +1496,12 @@ int __table_get_s8_s8(table_t *table, char key, char* val) {
 	uint64_t k = (uint64_t)key;
 	char tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (char)tmp;
 BAIL:
@@ -2308,12 +1514,12 @@ int __table_get_s8_s16(table_t *table, char key, short* val) {
 	uint64_t k = (uint64_t)key;
 	short tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (short)tmp;
 BAIL:
@@ -2326,12 +1532,12 @@ int __table_get_s8_s32(table_t *table, char key, int* val) {
 	uint64_t k = (uint64_t)key;
 	int tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (int)tmp;
 BAIL:
@@ -2344,12 +1550,12 @@ int __table_get_s8_sl32(table_t *table, char key, long* val) {
 	uint64_t k = (uint64_t)key;
 	long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (long)tmp;
 BAIL:
@@ -2362,12 +1568,12 @@ int __table_get_s8_s64(table_t *table, char key, long long* val) {
 	uint64_t k = (uint64_t)key;
 	long long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (long long)tmp;
 BAIL:
@@ -2380,12 +1586,12 @@ int __table_get_s8_u8(table_t *table, char key, unsigned char* val) {
 	uint64_t k = (uint64_t)key;
 	unsigned char tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned char)tmp;
 BAIL:
@@ -2398,12 +1604,12 @@ int __table_get_s8_u16(table_t *table, char key, unsigned short* val) {
 	uint64_t k = (uint64_t)key;
 	unsigned short tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned short)tmp;
 BAIL:
@@ -2416,12 +1622,12 @@ int __table_get_s8_u32(table_t *table, char key, unsigned int* val) {
 	uint64_t k = (uint64_t)key;
 	unsigned int tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned int)tmp;
 BAIL:
@@ -2434,12 +1640,12 @@ int __table_get_s8_ul32(table_t *table, char key, unsigned long* val) {
 	uint64_t k = (uint64_t)key;
 	unsigned long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned long)tmp;
 BAIL:
@@ -2452,12 +1658,12 @@ int __table_get_s8_u64(table_t *table, char key, unsigned long long* val) {
 	uint64_t k = (uint64_t)key;
 	unsigned long long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned long long)tmp;
 BAIL:
@@ -2470,12 +1676,12 @@ int __table_get_s8_v(table_t *table, char key, void** val) {
 	uint64_t k = (uint64_t)key;
 	void* tmp_out = NULL;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (void*)tmp;
 BAIL:
@@ -2488,12 +1694,12 @@ int __table_get_s16_s8(table_t *table, short key, char* val) {
 	uint64_t k = (uint64_t)key;
 	char tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (char)tmp;
 BAIL:
@@ -2506,12 +1712,12 @@ int __table_get_s16_s16(table_t *table, short key, short* val) {
 	uint64_t k = (uint64_t)key;
 	short tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (short)tmp;
 BAIL:
@@ -2524,12 +1730,12 @@ int __table_get_s16_s32(table_t *table, short key, int* val) {
 	uint64_t k = (uint64_t)key;
 	int tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (int)tmp;
 BAIL:
@@ -2542,12 +1748,12 @@ int __table_get_s16_sl32(table_t *table, short key, long* val) {
 	uint64_t k = (uint64_t)key;
 	long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (long)tmp;
 BAIL:
@@ -2560,12 +1766,12 @@ int __table_get_s16_s64(table_t *table, short key, long long* val) {
 	uint64_t k = (uint64_t)key;
 	long long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (long long)tmp;
 BAIL:
@@ -2578,12 +1784,12 @@ int __table_get_s16_u8(table_t *table, short key, unsigned char* val) {
 	uint64_t k = (uint64_t)key;
 	unsigned char tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned char)tmp;
 BAIL:
@@ -2596,12 +1802,12 @@ int __table_get_s16_u16(table_t *table, short key, unsigned short* val) {
 	uint64_t k = (uint64_t)key;
 	unsigned short tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned short)tmp;
 BAIL:
@@ -2614,12 +1820,12 @@ int __table_get_s16_u32(table_t *table, short key, unsigned int* val) {
 	uint64_t k = (uint64_t)key;
 	unsigned int tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned int)tmp;
 BAIL:
@@ -2632,12 +1838,12 @@ int __table_get_s16_ul32(table_t *table, short key, unsigned long* val) {
 	uint64_t k = (uint64_t)key;
 	unsigned long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned long)tmp;
 BAIL:
@@ -2650,12 +1856,12 @@ int __table_get_s16_u64(table_t *table, short key, unsigned long long* val) {
 	uint64_t k = (uint64_t)key;
 	unsigned long long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned long long)tmp;
 BAIL:
@@ -2668,12 +1874,12 @@ int __table_get_s16_v(table_t *table, short key, void** val) {
 	uint64_t k = (uint64_t)key;
 	void* tmp_out = NULL;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (void*)tmp;
 BAIL:
@@ -2686,12 +1892,12 @@ int __table_get_s32_s8(table_t *table, int key, char* val) {
 	uint64_t k = (uint64_t)key;
 	char tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (char)tmp;
 BAIL:
@@ -2704,12 +1910,12 @@ int __table_get_s32_s16(table_t *table, int key, short* val) {
 	uint64_t k = (uint64_t)key;
 	short tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (short)tmp;
 BAIL:
@@ -2722,12 +1928,12 @@ int __table_get_s32_s32(table_t *table, int key, int* val) {
 	uint64_t k = (uint64_t)key;
 	int tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (int)tmp;
 BAIL:
@@ -2740,12 +1946,12 @@ int __table_get_s32_sl32(table_t *table, int key, long* val) {
 	uint64_t k = (uint64_t)key;
 	long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (long)tmp;
 BAIL:
@@ -2758,12 +1964,12 @@ int __table_get_s32_s64(table_t *table, int key, long long* val) {
 	uint64_t k = (uint64_t)key;
 	long long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (long long)tmp;
 BAIL:
@@ -2776,12 +1982,12 @@ int __table_get_s32_u8(table_t *table, int key, unsigned char* val) {
 	uint64_t k = (uint64_t)key;
 	unsigned char tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned char)tmp;
 BAIL:
@@ -2794,12 +2000,12 @@ int __table_get_s32_u16(table_t *table, int key, unsigned short* val) {
 	uint64_t k = (uint64_t)key;
 	unsigned short tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned short)tmp;
 BAIL:
@@ -2812,12 +2018,12 @@ int __table_get_s32_u32(table_t *table, int key, unsigned int* val) {
 	uint64_t k = (uint64_t)key;
 	unsigned int tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned int)tmp;
 BAIL:
@@ -2830,12 +2036,12 @@ int __table_get_s32_ul32(table_t *table, int key, unsigned long* val) {
 	uint64_t k = (uint64_t)key;
 	unsigned long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned long)tmp;
 BAIL:
@@ -2848,12 +2054,12 @@ int __table_get_s32_u64(table_t *table, int key, unsigned long long* val) {
 	uint64_t k = (uint64_t)key;
 	unsigned long long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned long long)tmp;
 BAIL:
@@ -2866,12 +2072,12 @@ int __table_get_s32_v(table_t *table, int key, void** val) {
 	uint64_t k = (uint64_t)key;
 	void* tmp_out = NULL;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (void*)tmp;
 BAIL:
@@ -2884,12 +2090,12 @@ int __table_get_sl32_s8(table_t *table, long key, char* val) {
 	uint64_t k = (uint64_t)key;
 	char tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (char)tmp;
 BAIL:
@@ -2902,12 +2108,12 @@ int __table_get_sl32_s16(table_t *table, long key, short* val) {
 	uint64_t k = (uint64_t)key;
 	short tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (short)tmp;
 BAIL:
@@ -2920,12 +2126,12 @@ int __table_get_sl32_s32(table_t *table, long key, int* val) {
 	uint64_t k = (uint64_t)key;
 	int tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (int)tmp;
 BAIL:
@@ -2938,12 +2144,12 @@ int __table_get_sl32_sl32(table_t *table, long key, long* val) {
 	uint64_t k = (uint64_t)key;
 	long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (long)tmp;
 BAIL:
@@ -2956,12 +2162,12 @@ int __table_get_sl32_s64(table_t *table, long key, long long* val) {
 	uint64_t k = (uint64_t)key;
 	long long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (long long)tmp;
 BAIL:
@@ -2974,12 +2180,12 @@ int __table_get_sl32_u8(table_t *table, long key, unsigned char* val) {
 	uint64_t k = (uint64_t)key;
 	unsigned char tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned char)tmp;
 BAIL:
@@ -2992,12 +2198,12 @@ int __table_get_sl32_u16(table_t *table, long key, unsigned short* val) {
 	uint64_t k = (uint64_t)key;
 	unsigned short tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned short)tmp;
 BAIL:
@@ -3010,12 +2216,12 @@ int __table_get_sl32_u32(table_t *table, long key, unsigned int* val) {
 	uint64_t k = (uint64_t)key;
 	unsigned int tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned int)tmp;
 BAIL:
@@ -3028,12 +2234,12 @@ int __table_get_sl32_ul32(table_t *table, long key, unsigned long* val) {
 	uint64_t k = (uint64_t)key;
 	unsigned long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned long)tmp;
 BAIL:
@@ -3046,12 +2252,12 @@ int __table_get_sl32_u64(table_t *table, long key, unsigned long long* val) {
 	uint64_t k = (uint64_t)key;
 	unsigned long long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned long long)tmp;
 BAIL:
@@ -3064,12 +2270,12 @@ int __table_get_sl32_v(table_t *table, long key, void** val) {
 	uint64_t k = (uint64_t)key;
 	void* tmp_out = NULL;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (void*)tmp;
 BAIL:
@@ -3082,12 +2288,12 @@ int __table_get_s64_s8(table_t *table, long long key, char* val) {
 	uint64_t k = (uint64_t)key;
 	char tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (char)tmp;
 BAIL:
@@ -3100,12 +2306,12 @@ int __table_get_s64_s16(table_t *table, long long key, short* val) {
 	uint64_t k = (uint64_t)key;
 	short tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (short)tmp;
 BAIL:
@@ -3118,12 +2324,12 @@ int __table_get_s64_s32(table_t *table, long long key, int* val) {
 	uint64_t k = (uint64_t)key;
 	int tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (int)tmp;
 BAIL:
@@ -3136,12 +2342,12 @@ int __table_get_s64_sl32(table_t *table, long long key, long* val) {
 	uint64_t k = (uint64_t)key;
 	long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (long)tmp;
 BAIL:
@@ -3154,12 +2360,12 @@ int __table_get_s64_s64(table_t *table, long long key, long long* val) {
 	uint64_t k = (uint64_t)key;
 	long long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (long long)tmp;
 BAIL:
@@ -3172,12 +2378,12 @@ int __table_get_s64_u8(table_t *table, long long key, unsigned char* val) {
 	uint64_t k = (uint64_t)key;
 	unsigned char tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned char)tmp;
 BAIL:
@@ -3190,12 +2396,12 @@ int __table_get_s64_u16(table_t *table, long long key, unsigned short* val) {
 	uint64_t k = (uint64_t)key;
 	unsigned short tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned short)tmp;
 BAIL:
@@ -3208,12 +2414,12 @@ int __table_get_s64_u32(table_t *table, long long key, unsigned int* val) {
 	uint64_t k = (uint64_t)key;
 	unsigned int tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned int)tmp;
 BAIL:
@@ -3226,12 +2432,12 @@ int __table_get_s64_ul32(table_t *table, long long key, unsigned long* val) {
 	uint64_t k = (uint64_t)key;
 	unsigned long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned long)tmp;
 BAIL:
@@ -3244,12 +2450,12 @@ int __table_get_s64_u64(table_t *table, long long key, unsigned long long* val) 
 	uint64_t k = (uint64_t)key;
 	unsigned long long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned long long)tmp;
 BAIL:
@@ -3262,12 +2468,12 @@ int __table_get_s64_v(table_t *table, long long key, void** val) {
 	uint64_t k = (uint64_t)key;
 	void* tmp_out = NULL;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (void*)tmp;
 BAIL:
@@ -3280,12 +2486,12 @@ int __table_get_u8_s8(table_t *table, unsigned char key, char* val) {
 	uint64_t k = (uint64_t)key;
 	char tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (char)tmp;
 BAIL:
@@ -3298,12 +2504,12 @@ int __table_get_u8_s16(table_t *table, unsigned char key, short* val) {
 	uint64_t k = (uint64_t)key;
 	short tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (short)tmp;
 BAIL:
@@ -3316,12 +2522,12 @@ int __table_get_u8_s32(table_t *table, unsigned char key, int* val) {
 	uint64_t k = (uint64_t)key;
 	int tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (int)tmp;
 BAIL:
@@ -3334,12 +2540,12 @@ int __table_get_u8_sl32(table_t *table, unsigned char key, long* val) {
 	uint64_t k = (uint64_t)key;
 	long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (long)tmp;
 BAIL:
@@ -3352,12 +2558,12 @@ int __table_get_u8_s64(table_t *table, unsigned char key, long long* val) {
 	uint64_t k = (uint64_t)key;
 	long long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (long long)tmp;
 BAIL:
@@ -3370,12 +2576,12 @@ int __table_get_u8_u8(table_t *table, unsigned char key, unsigned char* val) {
 	uint64_t k = (uint64_t)key;
 	unsigned char tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned char)tmp;
 BAIL:
@@ -3388,12 +2594,12 @@ int __table_get_u8_u16(table_t *table, unsigned char key, unsigned short* val) {
 	uint64_t k = (uint64_t)key;
 	unsigned short tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned short)tmp;
 BAIL:
@@ -3406,12 +2612,12 @@ int __table_get_u8_u32(table_t *table, unsigned char key, unsigned int* val) {
 	uint64_t k = (uint64_t)key;
 	unsigned int tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned int)tmp;
 BAIL:
@@ -3424,12 +2630,12 @@ int __table_get_u8_ul32(table_t *table, unsigned char key, unsigned long* val) {
 	uint64_t k = (uint64_t)key;
 	unsigned long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned long)tmp;
 BAIL:
@@ -3442,12 +2648,12 @@ int __table_get_u8_u64(table_t *table, unsigned char key, unsigned long long* va
 	uint64_t k = (uint64_t)key;
 	unsigned long long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned long long)tmp;
 BAIL:
@@ -3460,12 +2666,12 @@ int __table_get_u8_v(table_t *table, unsigned char key, void** val) {
 	uint64_t k = (uint64_t)key;
 	void* tmp_out = NULL;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (void*)tmp;
 BAIL:
@@ -3478,12 +2684,12 @@ int __table_get_u16_s8(table_t *table, unsigned short key, char* val) {
 	uint64_t k = (uint64_t)key;
 	char tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (char)tmp;
 BAIL:
@@ -3496,12 +2702,12 @@ int __table_get_u16_s16(table_t *table, unsigned short key, short* val) {
 	uint64_t k = (uint64_t)key;
 	short tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (short)tmp;
 BAIL:
@@ -3514,12 +2720,12 @@ int __table_get_u16_s32(table_t *table, unsigned short key, int* val) {
 	uint64_t k = (uint64_t)key;
 	int tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (int)tmp;
 BAIL:
@@ -3532,12 +2738,12 @@ int __table_get_u16_sl32(table_t *table, unsigned short key, long* val) {
 	uint64_t k = (uint64_t)key;
 	long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (long)tmp;
 BAIL:
@@ -3550,12 +2756,12 @@ int __table_get_u16_s64(table_t *table, unsigned short key, long long* val) {
 	uint64_t k = (uint64_t)key;
 	long long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (long long)tmp;
 BAIL:
@@ -3568,12 +2774,12 @@ int __table_get_u16_u8(table_t *table, unsigned short key, unsigned char* val) {
 	uint64_t k = (uint64_t)key;
 	unsigned char tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned char)tmp;
 BAIL:
@@ -3586,12 +2792,12 @@ int __table_get_u16_u16(table_t *table, unsigned short key, unsigned short* val)
 	uint64_t k = (uint64_t)key;
 	unsigned short tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned short)tmp;
 BAIL:
@@ -3604,12 +2810,12 @@ int __table_get_u16_u32(table_t *table, unsigned short key, unsigned int* val) {
 	uint64_t k = (uint64_t)key;
 	unsigned int tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned int)tmp;
 BAIL:
@@ -3622,12 +2828,12 @@ int __table_get_u16_ul32(table_t *table, unsigned short key, unsigned long* val)
 	uint64_t k = (uint64_t)key;
 	unsigned long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned long)tmp;
 BAIL:
@@ -3640,12 +2846,12 @@ int __table_get_u16_u64(table_t *table, unsigned short key, unsigned long long* 
 	uint64_t k = (uint64_t)key;
 	unsigned long long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned long long)tmp;
 BAIL:
@@ -3658,12 +2864,12 @@ int __table_get_u16_v(table_t *table, unsigned short key, void** val) {
 	uint64_t k = (uint64_t)key;
 	void* tmp_out = NULL;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (void*)tmp;
 BAIL:
@@ -3676,12 +2882,12 @@ int __table_get_u32_s8(table_t *table, unsigned int key, char* val) {
 	uint64_t k = (uint64_t)key;
 	char tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (char)tmp;
 BAIL:
@@ -3694,12 +2900,12 @@ int __table_get_u32_s16(table_t *table, unsigned int key, short* val) {
 	uint64_t k = (uint64_t)key;
 	short tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (short)tmp;
 BAIL:
@@ -3712,12 +2918,12 @@ int __table_get_u32_s32(table_t *table, unsigned int key, int* val) {
 	uint64_t k = (uint64_t)key;
 	int tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (int)tmp;
 BAIL:
@@ -3730,12 +2936,12 @@ int __table_get_u32_sl32(table_t *table, unsigned int key, long* val) {
 	uint64_t k = (uint64_t)key;
 	long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (long)tmp;
 BAIL:
@@ -3748,12 +2954,12 @@ int __table_get_u32_s64(table_t *table, unsigned int key, long long* val) {
 	uint64_t k = (uint64_t)key;
 	long long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (long long)tmp;
 BAIL:
@@ -3766,12 +2972,12 @@ int __table_get_u32_u8(table_t *table, unsigned int key, unsigned char* val) {
 	uint64_t k = (uint64_t)key;
 	unsigned char tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned char)tmp;
 BAIL:
@@ -3784,12 +2990,12 @@ int __table_get_u32_u16(table_t *table, unsigned int key, unsigned short* val) {
 	uint64_t k = (uint64_t)key;
 	unsigned short tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned short)tmp;
 BAIL:
@@ -3802,12 +3008,12 @@ int __table_get_u32_u32(table_t *table, unsigned int key, unsigned int* val) {
 	uint64_t k = (uint64_t)key;
 	unsigned int tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned int)tmp;
 BAIL:
@@ -3820,12 +3026,12 @@ int __table_get_u32_ul32(table_t *table, unsigned int key, unsigned long* val) {
 	uint64_t k = (uint64_t)key;
 	unsigned long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned long)tmp;
 BAIL:
@@ -3838,12 +3044,12 @@ int __table_get_u32_u64(table_t *table, unsigned int key, unsigned long long* va
 	uint64_t k = (uint64_t)key;
 	unsigned long long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned long long)tmp;
 BAIL:
@@ -3856,12 +3062,12 @@ int __table_get_u32_v(table_t *table, unsigned int key, void** val) {
 	uint64_t k = (uint64_t)key;
 	void* tmp_out = NULL;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (void*)tmp;
 BAIL:
@@ -3874,12 +3080,12 @@ int __table_get_ul32_s8(table_t *table, unsigned long key, char* val) {
 	uint64_t k = (uint64_t)key;
 	char tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (char)tmp;
 BAIL:
@@ -3892,12 +3098,12 @@ int __table_get_ul32_s16(table_t *table, unsigned long key, short* val) {
 	uint64_t k = (uint64_t)key;
 	short tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (short)tmp;
 BAIL:
@@ -3910,12 +3116,12 @@ int __table_get_ul32_s32(table_t *table, unsigned long key, int* val) {
 	uint64_t k = (uint64_t)key;
 	int tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (int)tmp;
 BAIL:
@@ -3928,12 +3134,12 @@ int __table_get_ul32_sl32(table_t *table, unsigned long key, long* val) {
 	uint64_t k = (uint64_t)key;
 	long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (long)tmp;
 BAIL:
@@ -3946,12 +3152,12 @@ int __table_get_ul32_s64(table_t *table, unsigned long key, long long* val) {
 	uint64_t k = (uint64_t)key;
 	long long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (long long)tmp;
 BAIL:
@@ -3964,12 +3170,12 @@ int __table_get_ul32_u8(table_t *table, unsigned long key, unsigned char* val) {
 	uint64_t k = (uint64_t)key;
 	unsigned char tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned char)tmp;
 BAIL:
@@ -3982,12 +3188,12 @@ int __table_get_ul32_u16(table_t *table, unsigned long key, unsigned short* val)
 	uint64_t k = (uint64_t)key;
 	unsigned short tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned short)tmp;
 BAIL:
@@ -4000,12 +3206,12 @@ int __table_get_ul32_u32(table_t *table, unsigned long key, unsigned int* val) {
 	uint64_t k = (uint64_t)key;
 	unsigned int tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned int)tmp;
 BAIL:
@@ -4018,12 +3224,12 @@ int __table_get_ul32_ul32(table_t *table, unsigned long key, unsigned long* val)
 	uint64_t k = (uint64_t)key;
 	unsigned long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned long)tmp;
 BAIL:
@@ -4036,12 +3242,12 @@ int __table_get_ul32_u64(table_t *table, unsigned long key, unsigned long long* 
 	uint64_t k = (uint64_t)key;
 	unsigned long long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned long long)tmp;
 BAIL:
@@ -4054,12 +3260,12 @@ int __table_get_ul32_v(table_t *table, unsigned long key, void** val) {
 	uint64_t k = (uint64_t)key;
 	void* tmp_out = NULL;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (void*)tmp;
 BAIL:
@@ -4072,12 +3278,12 @@ int __table_get_u64_s8(table_t *table, unsigned long long key, char* val) {
 	uint64_t k = (uint64_t)key;
 	char tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (char)tmp;
 BAIL:
@@ -4090,12 +3296,12 @@ int __table_get_u64_s16(table_t *table, unsigned long long key, short* val) {
 	uint64_t k = (uint64_t)key;
 	short tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (short)tmp;
 BAIL:
@@ -4108,12 +3314,12 @@ int __table_get_u64_s32(table_t *table, unsigned long long key, int* val) {
 	uint64_t k = (uint64_t)key;
 	int tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (int)tmp;
 BAIL:
@@ -4126,12 +3332,12 @@ int __table_get_u64_sl32(table_t *table, unsigned long long key, long* val) {
 	uint64_t k = (uint64_t)key;
 	long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (long)tmp;
 BAIL:
@@ -4144,12 +3350,12 @@ int __table_get_u64_s64(table_t *table, unsigned long long key, long long* val) 
 	uint64_t k = (uint64_t)key;
 	long long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (long long)tmp;
 BAIL:
@@ -4162,12 +3368,12 @@ int __table_get_u64_u8(table_t *table, unsigned long long key, unsigned char* va
 	uint64_t k = (uint64_t)key;
 	unsigned char tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned char)tmp;
 BAIL:
@@ -4180,12 +3386,12 @@ int __table_get_u64_u16(table_t *table, unsigned long long key, unsigned short* 
 	uint64_t k = (uint64_t)key;
 	unsigned short tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned short)tmp;
 BAIL:
@@ -4198,12 +3404,12 @@ int __table_get_u64_u32(table_t *table, unsigned long long key, unsigned int* va
 	uint64_t k = (uint64_t)key;
 	unsigned int tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned int)tmp;
 BAIL:
@@ -4216,12 +3422,12 @@ int __table_get_u64_ul32(table_t *table, unsigned long long key, unsigned long* 
 	uint64_t k = (uint64_t)key;
 	unsigned long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned long)tmp;
 BAIL:
@@ -4234,12 +3440,12 @@ int __table_get_u64_u64(table_t *table, unsigned long long key, unsigned long lo
 	uint64_t k = (uint64_t)key;
 	unsigned long long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned long long)tmp;
 BAIL:
@@ -4252,12 +3458,12 @@ int __table_get_u64_v(table_t *table, unsigned long long key, void** val) {
 	uint64_t k = (uint64_t)key;
 	void* tmp_out = NULL;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (void*)tmp;
 BAIL:
@@ -4270,12 +3476,12 @@ int __table_get_v_s8(table_t *table, void* key, char* val) {
 	uint64_t k = (uint64_t)key;
 	char tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (char)tmp;
 BAIL:
@@ -4288,12 +3494,12 @@ int __table_get_v_s16(table_t *table, void* key, short* val) {
 	uint64_t k = (uint64_t)key;
 	short tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (short)tmp;
 BAIL:
@@ -4306,12 +3512,12 @@ int __table_get_v_s32(table_t *table, void* key, int* val) {
 	uint64_t k = (uint64_t)key;
 	int tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (int)tmp;
 BAIL:
@@ -4324,12 +3530,12 @@ int __table_get_v_sl32(table_t *table, void* key, long* val) {
 	uint64_t k = (uint64_t)key;
 	long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (long)tmp;
 BAIL:
@@ -4342,12 +3548,12 @@ int __table_get_v_s64(table_t *table, void* key, long long* val) {
 	uint64_t k = (uint64_t)key;
 	long long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (long long)tmp;
 BAIL:
@@ -4360,12 +3566,12 @@ int __table_get_v_u8(table_t *table, void* key, unsigned char* val) {
 	uint64_t k = (uint64_t)key;
 	unsigned char tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned char)tmp;
 BAIL:
@@ -4378,12 +3584,12 @@ int __table_get_v_u16(table_t *table, void* key, unsigned short* val) {
 	uint64_t k = (uint64_t)key;
 	unsigned short tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned short)tmp;
 BAIL:
@@ -4396,12 +3602,12 @@ int __table_get_v_u32(table_t *table, void* key, unsigned int* val) {
 	uint64_t k = (uint64_t)key;
 	unsigned int tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned int)tmp;
 BAIL:
@@ -4414,12 +3620,12 @@ int __table_get_v_ul32(table_t *table, void* key, unsigned long* val) {
 	uint64_t k = (uint64_t)key;
 	unsigned long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned long)tmp;
 BAIL:
@@ -4432,12 +3638,12 @@ int __table_get_v_u64(table_t *table, void* key, unsigned long long* val) {
 	uint64_t k = (uint64_t)key;
 	unsigned long long tmp_out = 0;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (unsigned long long)tmp;
 BAIL:
@@ -4450,12 +3656,12 @@ int __table_get_v_v(table_t *table, void* key, void** val) {
 	uint64_t k = (uint64_t)key;
 	void* tmp_out = NULL;
 	int result = 1;
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		result = 0;
 		goto BAIL;
 	}
 	uint64_t tmp;
-	if (!(result = unordered_map_get(&table->vmap, k, &tmp)))
+	if (!(result = imap_get(&table->vmap, k, &tmp)))
 		goto BAIL;
 	tmp_out = (void*)tmp;
 BAIL:
@@ -4466,1273 +3672,1273 @@ BAIL:
 
 int __table_set_c_s8(table_t *table, char* key, char val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_c_s16(table_t *table, char* key, short val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_c_s32(table_t *table, char* key, int val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_c_sl32(table_t *table, char* key, long val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_c_s64(table_t *table, char* key, long long val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_c_u8(table_t *table, char* key, unsigned char val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_c_u16(table_t *table, char* key, unsigned short val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_c_u32(table_t *table, char* key, unsigned int val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_c_ul32(table_t *table, char* key, unsigned long val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_c_u64(table_t *table, char* key, unsigned long long val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_c_v(table_t *table, char* key, void* val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_cc_s8(table_t *table, const char* key, char val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_cc_s16(table_t *table, const char* key, short val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_cc_s32(table_t *table, const char* key, int val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_cc_sl32(table_t *table, const char* key, long val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_cc_s64(table_t *table, const char* key, long long val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_cc_u8(table_t *table, const char* key, unsigned char val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_cc_u16(table_t *table, const char* key, unsigned short val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_cc_u32(table_t *table, const char* key, unsigned int val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_cc_ul32(table_t *table, const char* key, unsigned long val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_cc_u64(table_t *table, const char* key, unsigned long long val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_cc_v(table_t *table, const char* key, void* val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_uc_s8(table_t *table, unsigned char* key, char val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_uc_s16(table_t *table, unsigned char* key, short val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_uc_s32(table_t *table, unsigned char* key, int val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_uc_sl32(table_t *table, unsigned char* key, long val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_uc_s64(table_t *table, unsigned char* key, long long val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_uc_u8(table_t *table, unsigned char* key, unsigned char val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_uc_u16(table_t *table, unsigned char* key, unsigned short val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_uc_u32(table_t *table, unsigned char* key, unsigned int val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_uc_ul32(table_t *table, unsigned char* key, unsigned long val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_uc_u64(table_t *table, unsigned char* key, unsigned long long val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_uc_v(table_t *table, unsigned char* key, void* val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_cuc_s8(table_t *table, const unsigned char* key, char val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_cuc_s16(table_t *table, const unsigned char* key, short val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_cuc_s32(table_t *table, const unsigned char* key, int val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_cuc_sl32(table_t *table, const unsigned char* key, long val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_cuc_s64(table_t *table, const unsigned char* key, long long val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_cuc_u8(table_t *table, const unsigned char* key, unsigned char val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_cuc_u16(table_t *table, const unsigned char* key, unsigned short val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_cuc_u32(table_t *table, const unsigned char* key, unsigned int val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_cuc_ul32(table_t *table, const unsigned char* key, unsigned long val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_cuc_u64(table_t *table, const unsigned char* key, unsigned long long val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_cuc_v(table_t *table, const unsigned char* key, void* val) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k)) {
+	if (!IMAP_HAS(&table->vmap, k)) {
 		const char *dup = strdup((const char*)key);
-		unordered_map_set(&table->kmap, k, (uint64_t)dup);
+		imap_set(&table->kmap, k, (uint64_t)dup);
 	}
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s8_s8(table_t *table, char key, char val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s8_s16(table_t *table, char key, short val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s8_s32(table_t *table, char key, int val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s8_sl32(table_t *table, char key, long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s8_s64(table_t *table, char key, long long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s8_u8(table_t *table, char key, unsigned char val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s8_u16(table_t *table, char key, unsigned short val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s8_u32(table_t *table, char key, unsigned int val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s8_ul32(table_t *table, char key, unsigned long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s8_u64(table_t *table, char key, unsigned long long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s8_v(table_t *table, char key, void* val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s16_s8(table_t *table, short key, char val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s16_s16(table_t *table, short key, short val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s16_s32(table_t *table, short key, int val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s16_sl32(table_t *table, short key, long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s16_s64(table_t *table, short key, long long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s16_u8(table_t *table, short key, unsigned char val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s16_u16(table_t *table, short key, unsigned short val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s16_u32(table_t *table, short key, unsigned int val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s16_ul32(table_t *table, short key, unsigned long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s16_u64(table_t *table, short key, unsigned long long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s16_v(table_t *table, short key, void* val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s32_s8(table_t *table, int key, char val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s32_s16(table_t *table, int key, short val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s32_s32(table_t *table, int key, int val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s32_sl32(table_t *table, int key, long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s32_s64(table_t *table, int key, long long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s32_u8(table_t *table, int key, unsigned char val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s32_u16(table_t *table, int key, unsigned short val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s32_u32(table_t *table, int key, unsigned int val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s32_ul32(table_t *table, int key, unsigned long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s32_u64(table_t *table, int key, unsigned long long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s32_v(table_t *table, int key, void* val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_sl32_s8(table_t *table, long key, char val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_sl32_s16(table_t *table, long key, short val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_sl32_s32(table_t *table, long key, int val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_sl32_sl32(table_t *table, long key, long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_sl32_s64(table_t *table, long key, long long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_sl32_u8(table_t *table, long key, unsigned char val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_sl32_u16(table_t *table, long key, unsigned short val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_sl32_u32(table_t *table, long key, unsigned int val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_sl32_ul32(table_t *table, long key, unsigned long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_sl32_u64(table_t *table, long key, unsigned long long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_sl32_v(table_t *table, long key, void* val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s64_s8(table_t *table, long long key, char val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s64_s16(table_t *table, long long key, short val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s64_s32(table_t *table, long long key, int val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s64_sl32(table_t *table, long long key, long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s64_s64(table_t *table, long long key, long long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s64_u8(table_t *table, long long key, unsigned char val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s64_u16(table_t *table, long long key, unsigned short val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s64_u32(table_t *table, long long key, unsigned int val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s64_ul32(table_t *table, long long key, unsigned long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s64_u64(table_t *table, long long key, unsigned long long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_s64_v(table_t *table, long long key, void* val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u8_s8(table_t *table, unsigned char key, char val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u8_s16(table_t *table, unsigned char key, short val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u8_s32(table_t *table, unsigned char key, int val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u8_sl32(table_t *table, unsigned char key, long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u8_s64(table_t *table, unsigned char key, long long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u8_u8(table_t *table, unsigned char key, unsigned char val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u8_u16(table_t *table, unsigned char key, unsigned short val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u8_u32(table_t *table, unsigned char key, unsigned int val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u8_ul32(table_t *table, unsigned char key, unsigned long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u8_u64(table_t *table, unsigned char key, unsigned long long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u8_v(table_t *table, unsigned char key, void* val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u16_s8(table_t *table, unsigned short key, char val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u16_s16(table_t *table, unsigned short key, short val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u16_s32(table_t *table, unsigned short key, int val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u16_sl32(table_t *table, unsigned short key, long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u16_s64(table_t *table, unsigned short key, long long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u16_u8(table_t *table, unsigned short key, unsigned char val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u16_u16(table_t *table, unsigned short key, unsigned short val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u16_u32(table_t *table, unsigned short key, unsigned int val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u16_ul32(table_t *table, unsigned short key, unsigned long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u16_u64(table_t *table, unsigned short key, unsigned long long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u16_v(table_t *table, unsigned short key, void* val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u32_s8(table_t *table, unsigned int key, char val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u32_s16(table_t *table, unsigned int key, short val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u32_s32(table_t *table, unsigned int key, int val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u32_sl32(table_t *table, unsigned int key, long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u32_s64(table_t *table, unsigned int key, long long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u32_u8(table_t *table, unsigned int key, unsigned char val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u32_u16(table_t *table, unsigned int key, unsigned short val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u32_u32(table_t *table, unsigned int key, unsigned int val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u32_ul32(table_t *table, unsigned int key, unsigned long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u32_u64(table_t *table, unsigned int key, unsigned long long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u32_v(table_t *table, unsigned int key, void* val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_ul32_s8(table_t *table, unsigned long key, char val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_ul32_s16(table_t *table, unsigned long key, short val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_ul32_s32(table_t *table, unsigned long key, int val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_ul32_sl32(table_t *table, unsigned long key, long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_ul32_s64(table_t *table, unsigned long key, long long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_ul32_u8(table_t *table, unsigned long key, unsigned char val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_ul32_u16(table_t *table, unsigned long key, unsigned short val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_ul32_u32(table_t *table, unsigned long key, unsigned int val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_ul32_ul32(table_t *table, unsigned long key, unsigned long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_ul32_u64(table_t *table, unsigned long key, unsigned long long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_ul32_v(table_t *table, unsigned long key, void* val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u64_s8(table_t *table, unsigned long long key, char val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u64_s16(table_t *table, unsigned long long key, short val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u64_s32(table_t *table, unsigned long long key, int val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u64_sl32(table_t *table, unsigned long long key, long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u64_s64(table_t *table, unsigned long long key, long long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u64_u8(table_t *table, unsigned long long key, unsigned char val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u64_u16(table_t *table, unsigned long long key, unsigned short val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u64_u32(table_t *table, unsigned long long key, unsigned int val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u64_ul32(table_t *table, unsigned long long key, unsigned long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u64_u64(table_t *table, unsigned long long key, unsigned long long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_u64_v(table_t *table, unsigned long long key, void* val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_v_s8(table_t *table, void* key, char val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_v_s16(table_t *table, void* key, short val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_v_s32(table_t *table, void* key, int val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_v_sl32(table_t *table, void* key, long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_v_s64(table_t *table, void* key, long long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_v_u8(table_t *table, void* key, unsigned char val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_v_u16(table_t *table, void* key, unsigned short val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_v_u32(table_t *table, void* key, unsigned int val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_v_ul32(table_t *table, void* key, unsigned long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_v_u64(table_t *table, void* key, unsigned long long val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_set_v_v(table_t *table, void* key, void* val) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_set(&table->vmap, k, (uint64_t)val);
+	return imap_set(&table->vmap, k, (uint64_t)val);
 }
 
 int __table_has_c(table_t *table, char* key) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	return unordered_map_has(&table->vmap, k);
+	return IMAP_HAS(&table->vmap, k);
 }
 
 int __table_has_cc(table_t *table, const char* key) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	return unordered_map_has(&table->vmap, k);
+	return IMAP_HAS(&table->vmap, k);
 }
 
 int __table_has_uc(table_t *table, unsigned char* key) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	return unordered_map_has(&table->vmap, k);
+	return IMAP_HAS(&table->vmap, k);
 }
 
 int __table_has_cuc(table_t *table, const unsigned char* key) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	return unordered_map_has(&table->vmap, k);
+	return IMAP_HAS(&table->vmap, k);
 }
 
 int __table_has_s8(table_t *table, char key) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_has(&table->vmap, k);
+	return IMAP_HAS(&table->vmap, k);
 }
 
 int __table_has_s16(table_t *table, short key) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_has(&table->vmap, k);
+	return IMAP_HAS(&table->vmap, k);
 }
 
 int __table_has_s32(table_t *table, int key) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_has(&table->vmap, k);
+	return IMAP_HAS(&table->vmap, k);
 }
 
 int __table_has_sl32(table_t *table, long key) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_has(&table->vmap, k);
+	return IMAP_HAS(&table->vmap, k);
 }
 
 int __table_has_s64(table_t *table, long long key) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_has(&table->vmap, k);
+	return IMAP_HAS(&table->vmap, k);
 }
 
 int __table_has_u8(table_t *table, unsigned char key) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_has(&table->vmap, k);
+	return IMAP_HAS(&table->vmap, k);
 }
 
 int __table_has_u16(table_t *table, unsigned short key) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_has(&table->vmap, k);
+	return IMAP_HAS(&table->vmap, k);
 }
 
 int __table_has_u32(table_t *table, unsigned int key) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_has(&table->vmap, k);
+	return IMAP_HAS(&table->vmap, k);
 }
 
 int __table_has_ul32(table_t *table, unsigned long key) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_has(&table->vmap, k);
+	return IMAP_HAS(&table->vmap, k);
 }
 
 int __table_has_u64(table_t *table, unsigned long long key) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_has(&table->vmap, k);
+	return IMAP_HAS(&table->vmap, k);
 }
 
 int __table_has_v(table_t *table, void* key) {
 	uint64_t k = (uint64_t)key;
-	return unordered_map_has(&table->vmap, k);
+	return IMAP_HAS(&table->vmap, k);
 }
 
 int __table_del_c(table_t *table, char* key) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k))
+	if (!IMAP_HAS(&table->vmap, k))
 		return 0;
-	if (!unordered_map_del(&table->vmap, k))
+	if (!imap_del(&table->vmap, k))
 		return 0;
 	uint64_t tmp;
-	if (!unordered_map_get(&table->kmap, k, &tmp))
+	if (!imap_get(&table->kmap, k, &tmp))
 		return 0;
 	free((void*)tmp);
-	return unordered_map_del(&table->kmap, k);
+	return imap_del(&table->kmap, k);
 }
 
 int __table_del_cc(table_t *table, const char* key) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k))
+	if (!IMAP_HAS(&table->vmap, k))
 		return 0;
-	if (!unordered_map_del(&table->vmap, k))
+	if (!imap_del(&table->vmap, k))
 		return 0;
 	uint64_t tmp;
-	if (!unordered_map_get(&table->kmap, k, &tmp))
+	if (!imap_get(&table->kmap, k, &tmp))
 		return 0;
 	free((void*)tmp);
-	return unordered_map_del(&table->kmap, k);
+	return imap_del(&table->kmap, k);
 }
 
 int __table_del_uc(table_t *table, unsigned char* key) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k))
+	if (!IMAP_HAS(&table->vmap, k))
 		return 0;
-	if (!unordered_map_del(&table->vmap, k))
+	if (!imap_del(&table->vmap, k))
 		return 0;
 	uint64_t tmp;
-	if (!unordered_map_get(&table->kmap, k, &tmp))
+	if (!imap_get(&table->kmap, k, &tmp))
 		return 0;
 	free((void*)tmp);
-	return unordered_map_del(&table->kmap, k);
+	return imap_del(&table->kmap, k);
 }
 
 int __table_del_cuc(table_t *table, const unsigned char* key) {
 	uint64_t k = table->hashfn((void*)key, strlen((const char*)key), table->seed);
-	if (!unordered_map_has(&table->vmap, k))
+	if (!IMAP_HAS(&table->vmap, k))
 		return 0;
-	if (!unordered_map_del(&table->vmap, k))
+	if (!imap_del(&table->vmap, k))
 		return 0;
 	uint64_t tmp;
-	if (!unordered_map_get(&table->kmap, k, &tmp))
+	if (!imap_get(&table->kmap, k, &tmp))
 		return 0;
 	free((void*)tmp);
-	return unordered_map_del(&table->kmap, k);
+	return imap_del(&table->kmap, k);
 }
 
 int __table_del_s8(table_t *table, char key) {
 	uint64_t k = (uint64_t)key;
-	if (!unordered_map_has(&table->vmap, k))
+	if (!IMAP_HAS(&table->vmap, k))
 		return 0;
-	if (!unordered_map_del(&table->vmap, k))
+	if (!imap_del(&table->vmap, k))
 		return 0;
 	uint64_t tmp;
-	if (!unordered_map_get(&table->kmap, k, &tmp))
+	if (!imap_get(&table->kmap, k, &tmp))
 		return 0;
 	free((void*)tmp);
-	return unordered_map_del(&table->kmap, k);
+	return imap_del(&table->kmap, k);
 }
 
 int __table_del_s16(table_t *table, short key) {
 	uint64_t k = (uint64_t)key;
-	if (!unordered_map_has(&table->vmap, k))
+	if (!IMAP_HAS(&table->vmap, k))
 		return 0;
-	if (!unordered_map_del(&table->vmap, k))
+	if (!imap_del(&table->vmap, k))
 		return 0;
 	uint64_t tmp;
-	if (!unordered_map_get(&table->kmap, k, &tmp))
+	if (!imap_get(&table->kmap, k, &tmp))
 		return 0;
 	free((void*)tmp);
-	return unordered_map_del(&table->kmap, k);
+	return imap_del(&table->kmap, k);
 }
 
 int __table_del_s32(table_t *table, int key) {
 	uint64_t k = (uint64_t)key;
-	if (!unordered_map_has(&table->vmap, k))
+	if (!IMAP_HAS(&table->vmap, k))
 		return 0;
-	if (!unordered_map_del(&table->vmap, k))
+	if (!imap_del(&table->vmap, k))
 		return 0;
 	uint64_t tmp;
-	if (!unordered_map_get(&table->kmap, k, &tmp))
+	if (!imap_get(&table->kmap, k, &tmp))
 		return 0;
 	free((void*)tmp);
-	return unordered_map_del(&table->kmap, k);
+	return imap_del(&table->kmap, k);
 }
 
 int __table_del_sl32(table_t *table, long key) {
 	uint64_t k = (uint64_t)key;
-	if (!unordered_map_has(&table->vmap, k))
+	if (!IMAP_HAS(&table->vmap, k))
 		return 0;
-	if (!unordered_map_del(&table->vmap, k))
+	if (!imap_del(&table->vmap, k))
 		return 0;
 	uint64_t tmp;
-	if (!unordered_map_get(&table->kmap, k, &tmp))
+	if (!imap_get(&table->kmap, k, &tmp))
 		return 0;
 	free((void*)tmp);
-	return unordered_map_del(&table->kmap, k);
+	return imap_del(&table->kmap, k);
 }
 
 int __table_del_s64(table_t *table, long long key) {
 	uint64_t k = (uint64_t)key;
-	if (!unordered_map_has(&table->vmap, k))
+	if (!IMAP_HAS(&table->vmap, k))
 		return 0;
-	if (!unordered_map_del(&table->vmap, k))
+	if (!imap_del(&table->vmap, k))
 		return 0;
 	uint64_t tmp;
-	if (!unordered_map_get(&table->kmap, k, &tmp))
+	if (!imap_get(&table->kmap, k, &tmp))
 		return 0;
 	free((void*)tmp);
-	return unordered_map_del(&table->kmap, k);
+	return imap_del(&table->kmap, k);
 }
 
 int __table_del_u8(table_t *table, unsigned char key) {
 	uint64_t k = (uint64_t)key;
-	if (!unordered_map_has(&table->vmap, k))
+	if (!IMAP_HAS(&table->vmap, k))
 		return 0;
-	if (!unordered_map_del(&table->vmap, k))
+	if (!imap_del(&table->vmap, k))
 		return 0;
 	uint64_t tmp;
-	if (!unordered_map_get(&table->kmap, k, &tmp))
+	if (!imap_get(&table->kmap, k, &tmp))
 		return 0;
 	free((void*)tmp);
-	return unordered_map_del(&table->kmap, k);
+	return imap_del(&table->kmap, k);
 }
 
 int __table_del_u16(table_t *table, unsigned short key) {
 	uint64_t k = (uint64_t)key;
-	if (!unordered_map_has(&table->vmap, k))
+	if (!IMAP_HAS(&table->vmap, k))
 		return 0;
-	if (!unordered_map_del(&table->vmap, k))
+	if (!imap_del(&table->vmap, k))
 		return 0;
 	uint64_t tmp;
-	if (!unordered_map_get(&table->kmap, k, &tmp))
+	if (!imap_get(&table->kmap, k, &tmp))
 		return 0;
 	free((void*)tmp);
-	return unordered_map_del(&table->kmap, k);
+	return imap_del(&table->kmap, k);
 }
 
 int __table_del_u32(table_t *table, unsigned int key) {
 	uint64_t k = (uint64_t)key;
-	if (!unordered_map_has(&table->vmap, k))
+	if (!IMAP_HAS(&table->vmap, k))
 		return 0;
-	if (!unordered_map_del(&table->vmap, k))
+	if (!imap_del(&table->vmap, k))
 		return 0;
 	uint64_t tmp;
-	if (!unordered_map_get(&table->kmap, k, &tmp))
+	if (!imap_get(&table->kmap, k, &tmp))
 		return 0;
 	free((void*)tmp);
-	return unordered_map_del(&table->kmap, k);
+	return imap_del(&table->kmap, k);
 }
 
 int __table_del_ul32(table_t *table, unsigned long key) {
 	uint64_t k = (uint64_t)key;
-	if (!unordered_map_has(&table->vmap, k))
+	if (!IMAP_HAS(&table->vmap, k))
 		return 0;
-	if (!unordered_map_del(&table->vmap, k))
+	if (!imap_del(&table->vmap, k))
 		return 0;
 	uint64_t tmp;
-	if (!unordered_map_get(&table->kmap, k, &tmp))
+	if (!imap_get(&table->kmap, k, &tmp))
 		return 0;
 	free((void*)tmp);
-	return unordered_map_del(&table->kmap, k);
+	return imap_del(&table->kmap, k);
 }
 
 int __table_del_u64(table_t *table, unsigned long long key) {
 	uint64_t k = (uint64_t)key;
-	if (!unordered_map_has(&table->vmap, k))
+	if (!IMAP_HAS(&table->vmap, k))
 		return 0;
-	if (!unordered_map_del(&table->vmap, k))
+	if (!imap_del(&table->vmap, k))
 		return 0;
 	uint64_t tmp;
-	if (!unordered_map_get(&table->kmap, k, &tmp))
+	if (!imap_get(&table->kmap, k, &tmp))
 		return 0;
 	free((void*)tmp);
-	return unordered_map_del(&table->kmap, k);
+	return imap_del(&table->kmap, k);
 }
 
 int __table_del_v(table_t *table, void* key) {
 	uint64_t k = (uint64_t)key;
-	if (!unordered_map_has(&table->vmap, k))
+	if (!IMAP_HAS(&table->vmap, k))
 		return 0;
-	if (!unordered_map_del(&table->vmap, k))
+	if (!imap_del(&table->vmap, k))
 		return 0;
 	uint64_t tmp;
-	if (!unordered_map_get(&table->kmap, k, &tmp))
+	if (!imap_get(&table->kmap, k, &tmp))
 		return 0;
 	free((void*)tmp);
-	return unordered_map_del(&table->kmap, k);
+	return imap_del(&table->kmap, k);
 }
 
 // END SOURCE
