@@ -100,7 +100,7 @@ bool _table_del(table_t *table, uint64_t key);
 void _table_each_fn(table_t *table, void(*callback)(table_t*, table_entry_t*, void*), void *userdata);
 void _table_each_block(table_t *table, void(^callback)(table_t*, table_entry_t*, void*), void *userdata);
 
-#define _TABLE(FN, C, S) \
+#define _T_TABLE(FN, C, S) \
     (table_t) { \
         .hashfn = (FN), \
         .seed = (S), \
@@ -139,7 +139,8 @@ enum _table_type {
         default: _table_void_to_int \
     )((T), (V))
 
-#define table() (_TABLE(_table_murmur, TABLE_INITIAL_CAPACITY, 0))
+#define table() \
+    (_T_TABLE(_table_murmur, TABLE_INITIAL_CAPACITY, 0))
 
 void table_free(table_t *table);
 

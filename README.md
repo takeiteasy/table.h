@@ -8,15 +8,16 @@ Lua inspired table data type for C. Seemlessly use strings, integers or even poi
 > [!NOTE]
 > Built off [billziss-gh/imap](https://github.com/billziss-gh/imap)
 
+### API
+
 ```c
-table_t table_new(void); // default hashfn (murmur) + capacity (8)
-table_t table_make(table_hash hashfn, uint32_t capacity, uint64_t seed);
+table_t table(void);
 void table_free(table_t *table);
-void table_each(table_t *table, int(*callback)(table_pair_t *pair, void*), void *userdata);
 #define table_get(TABLE, KEY, VALUE) ...
 #define table_set(TABLE, KEY, VALUE) ...
 #define table_has(TABLE, KEY) ...
-#define table_del(TABLE, KEY) ... 
+#define table_del(TABLE, KEY) ...
+#define table_each(TABLE, CALLBACK, USERDATA) ... 
 ```
 
 ### example
@@ -27,7 +28,7 @@ void table_each(table_t *table, int(*callback)(table_pair_t *pair, void*), void 
 #include <assert.h>
 
 int main(int argc, const char *argv[]) {
-    table_t table = table_new(); // create new table
+    table_t table = table(); // create new table
     table_set(&table, "test", 100); // set key "test" to 100
     // keys can be:
     //  - (const)? (unsigned)? char* (hashed to uint64_t)
@@ -57,28 +58,6 @@ int main(int argc, const char *argv[]) {
 ## License
 
 ```
-MIT License
-
-Copyright (c) 2023 Bill Zissimopoulos
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
  Copyright (C) 2024  George Watson
 
  This program is free software: you can redistribute it and/or modify
