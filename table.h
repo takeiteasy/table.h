@@ -30,8 +30,8 @@ extern "C" {
 #include <stddef.h>
 #include <stdbool.h>
 
-#if !defined(TABLE_ALLOC)
-#define TABLE_ALLOC malloc
+#if !defined(TABLE_MALLOC)
+#define TABLE_MALLOC malloc
 #endif
 #if !defined(TABLE_FREE)
 #define TABLE_FREE free
@@ -61,12 +61,22 @@ typedef struct table_entry {
 	table_entry_type type;
 } table_entry_t;
 
+typedef struct table_key {
+    union {
+        const char *string;
+        void *pointer;
+        uint64_t integer;
+    } value;
+    table_entry_type type;
+} table_key_t;
+
 typedef struct table {
     imap_t map;
     table_hash_fn hashfn;
     uint64_t seed;
 } table_t;
 
+// please ignore these, thank you x
 uint64_t _table_murmur(const void *data, size_t len, uint32_t seed);
 bool _table_set_int(table_t *table, uint64_t key, uint64_t value);
 bool _table_set_str(table_t *table, const char *key, uint64_t value);
@@ -77,6 +87,14 @@ uint64_t _table_void_to_int(table_t *_, void *ptr);
 bool _table_set_int(table_t *table, uint64_t key, uint64_t value);
 bool _table_set_str(table_t *table, const char *key, uint64_t value);
 bool _table_set_void(table_t *table, void *key, uint64_t value);
+int _table_get(table_t *table, uint64_t key, uint64_t *val);
+uint64_t _table_get_int(table_t *table, uint64_t key);
+uint64_t _table_get_str(table_t *table, const char *key);
+uint64_t _table_get_void(table_t *table, void *key);
+bool _table_has(table_t *table, uint64_t key);
+bool _table_del(table_t *table, uint64_t key);
+void _table_each_fn(table_t *table, void(*callback)(table_t*, table_entry_t*, void*), void *userdata);
+void _table_each_block(table_t *table, void(^callback)(table_t*, table_entry_t*, void*), void *userdata);
 
 #define _TABLE(FN, C, S) \
     (table_t) { \
@@ -85,15 +103,98 @@ bool _table_set_void(table_t *table, void *key, uint64_t value);
         .map = IMAP((C) > TABLE_INITIAL_CAPACITY ? (C) : TABLE_INITIAL_CAPACITY) \
     }
 
+	enum _table_type {
+    T_INT,
+    T_STR,
+    T_VOID
+};
+
+#define _T_TYPE(T) \
+    _Generic((T), \
+        char: T_INT, \
+        short: T_INT, \
+        int: T_INT, \
+        long: T_INT, \
+        long long: T_INT, \
+        unsigned char: T_INT, \
+        unsigned short: T_INT, \
+        unsigned int: T_INT, \
+        unsigned long: T_INT, \
+        unsigned long long: T_INT, \
+        char*: T_STR, \
+        const char*: T_STR, \
+        unsigned char*: T_STR, \
+        const unsigned char*: T_STR, \
+        void*: T_VOID, \
+        default: T_VOID)
+
+#define _T_COERCE(T, V) \
+    _Generic((int(*)[_T_TYPE(V)])NULL, \
+        int(*)[T_INT]: _table_int_to_int, \
+        int(*)[T_STR]: _table_str_to_int, \
+        default: _table_void_to_int \
+    )((T), (V))
+
 #define table() (_TABLE(_table_murmur, TABLE_INITIAL_CAPACITY, 0))
+
 void table_free(table_t *table);
+
+#define table_set(T, A, B) \
+    _Generic((int(*)[_T_TYPE(A)][_T_TYPE(B)])NULL, \
+        int(*)[T_INT][T_INT]:   _table_set_int, \
+        int(*)[T_INT][T_STR]:   _table_set_int, \
+        int(*)[T_INT][T_VOID]:  _table_set_int, \
+        int(*)[T_STR][T_INT]:   _table_set_str, \
+        int(*)[T_STR][T_STR]:   _table_set_str, \
+        int(*)[T_STR][T_VOID]:  _table_set_str, \
+        int(*)[T_VOID][T_INT]:  _table_set_void, \
+        int(*)[T_VOID][T_STR]:  _table_set_void, \
+        int(*)[T_VOID][T_VOID]: _table_set_void \
+    )((T), (A), _T_COERCE((T), (B)))
+
+#define _T_GET(T, K) \
+    _Generic((int(*)[_T_TYPE(K)])NULL, \
+        int(*)[T_INT]:   _table_get_int, \
+        int(*)[T_STR]:   _table_get_str, \
+        int(*)[T_VOID]:  _table_get_void \
+    )((T), (K))
+
+#define table_get(T, K, V) \
+    (^(table_t *_t, typeof(K) _k, typeof(V) _v) { \
+        uint64_t _out = 0; \
+        if (!_table_get(_t, _T_GET(_t, _k), &_out)) \
+            return false; \
+        table_entry_t *_entry = (table_entry_t*)_out; \
+        if (!_entry) \
+            return false; \
+        if (_v) \
+            *_v = (typeof(*_v))_entry->value; \
+        return true; \
+    })((T), (K), (V))
+
+#define table_has(T, K) \
+    (^(table_t *_t, typeof(K) _k) { \
+        return _table_has(_t, _T_GET(_t, _k)); \
+    })((T), (K))
+
+#define table_del(T, K) \
+    (^(table_t *_t, typeof(K) _k) { \
+        uint64_t _key = _T_GET(_t, _k); \
+        return _table_has(_t, _key) ? _table_del(_t, _key) : false; \
+    })((T), (K))
+
+#define table_each(T, USERDATA, FN) \
+	_Generic((FN), \
+		void(*)(table_t*, table_entry_t*, void*): _table_each_fn, \
+		void(^)(table_t*, table_entry_t*, void*): _table_each_block \
+    )((T), (FN), (USERDATA))
 
 #ifdef __cplusplus
 }
 #endif
 #endif // TABLE_HEADER
 
-#if defined(TABLE_IMPLEMENTATION)
+#ifdef TABLE_IMPLEMENTATION
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
@@ -153,7 +254,7 @@ static inline uint64_t imap__ceilpow2__(uint64_t x) {
 }
 
 static inline void *imap__aligned_alloc__(uint64_t alignment, uint64_t size) {
-    void *p = TABLE_ALLOC(size + sizeof(void *) + alignment - 1);
+    void *p = TABLE_MALLOC(size + sizeof(void *) + alignment - 1);
     if (!p)
         return p;
     void **ap = (void**)(((uint64_t)p + sizeof(void *) + alignment - 1) & ~(alignment - 1));
@@ -495,60 +596,12 @@ static imap_pair_t imap_iterate(imap_node_t *tree, imap_iter_t *iter, int restar
     return imap__pair_zero__;
 }
 
-
 #define IMAP(C) \
 	(imap_t) { \
         .capacity = (C), \
         .count = 0, \
         .tree = imap_ensure(NULL, (C) > TABLE_INITIAL_CAPACITY ? (C) : TABLE_INITIAL_CAPACITY) \
     }
-
-#define IMAP_FREE(MAP) \
-	do { \
-		if ((MAP)) { \
-			IMAP_ALIGNED_FREE((MAP)->tree); \
-			memset((MAP), 0, sizeof(imap_t)); \
-		} \
-	} while(0)
-
-#define IMAP_HAS(MAP, KEY) (imap_lookup((MAP)->tree, (KEY)) != NULL)
-
-static int imap_set(imap_t *map, uint64_t key, uint64_t val) {
-    uint32_t *slot = imap_lookup(map->tree, key);
-    if (slot) {
-        imap_setval64(map->tree, slot, val);
-        return 1;
-    }
-    if (map->count + 1 >= map->capacity) {
-        map->capacity *= 2;
-        map->tree = imap_ensure(map->tree, map->capacity);
-    }
-    if (!(slot = imap_assign(map->tree, key)))
-        return 0;
-    imap_setval64(map->tree, slot, val);
-    map->count++;
-    return 1;
-}
-
-int imap_get(imap_t *map, uint64_t key, uint64_t *val) {
-    uint32_t *slot = imap_lookup(map->tree, key);
-    if (!slot)
-        return 0;
-    if (val)
-        *val = imap_getval64(map->tree, slot);
-    return 1;
-}
-
-static int imap_del(imap_t *map, uint64_t key) {
-    if (!map->count)
-        return 0;
-    uint32_t *slot = imap_lookup(map->tree, key);
-    if (!slot)
-        return 0;
-    imap_remove(map->tree, key);
-    map->count--;
-    return 1;
-}
 
 static void MM86128(const void *key, const int len, uint32_t seed, void *out) {
 #define ROTL32(x, r) ((x << r) | (x >> (32 - r)))
@@ -639,7 +692,7 @@ uint64_t _table_murmur(const void *data, size_t len, uint32_t seed) {
 
 #define _ENTRY(T, V, R) \
 	do { \
-		table_entry_t *entry = malloc(sizeof(table_entry_t)); \
+		table_entry_t *entry = TABLE_MALLOC(sizeof(table_entry_t)); \
 		entry->type = (T); \
 		entry->value = (V); \
 		entry->raw = (R); \
@@ -661,7 +714,20 @@ uint64_t _table_void_to_int(table_t *table, void *ptr) {
 }
 
 bool _table_set_int(table_t *table, uint64_t key, uint64_t value) {
-	return imap_set(&table->map, key, value);
+	uint32_t *slot = imap_lookup(table->map.tree, key);
+    if (slot) {
+        imap_setval64(table->map.tree, slot, value);
+        return true;
+    }
+    if (table->map.count + 1 >= table->map.capacity) {
+        table->map.capacity *= 2;
+        table->map.tree = imap_ensure(table->map.tree, table->map.capacity);
+    }
+    if (!(slot = imap_assign(table->map.tree, key)))
+        return false;
+    imap_setval64(table->map.tree, slot, value);
+    table->map.count++;
+    return true;
 }
 
 bool _table_set_str(table_t *table, const char *key, uint64_t value) {
@@ -672,10 +738,70 @@ bool _table_set_str(table_t *table, const char *key, uint64_t value) {
 bool _table_set_void(table_t *table, void *key, uint64_t value) {
 	return _table_set_int(table, (uintptr_t)key, value);
 }
+
+int _table_get(table_t *table, uint64_t key, uint64_t *val) {
+    uint32_t *slot = imap_lookup(table->map.tree, key);
+    if (!slot)
+        return 0;
+    if (val)
+        *val = imap_getval64(table->map.tree, slot);
+    return 1;
+}
+
+uint64_t _table_get_int(table_t *table, uint64_t key) {
+	return key;
+}
+
+uint64_t _table_get_str(table_t *table, const char *key) {
+	return _HASH(table, key);
+}
+
+uint64_t _table_get_void(table_t *table, void *key) {
+	return (uintptr_t)key;
+}
+
+bool _table_has(table_t *table, uint64_t key) {
+	return imap_lookup(table->map.tree, key) != NULL;
+}
+
+bool _table_del(table_t *table, uint64_t key) {
+	imap_remove(table->map.tree, key);
+	table->map.count--;
+	return true;
+}
  
 void table_free(table_t *table) {
-	// TODO: free entries first
-    IMAP_FREE(&table->map);
-    memset(table, 0, sizeof(table_t));
+	if (!table)
+		return;
+	if (table->map.tree) {
+		// TODO: free entries first
+		IMAP_ALIGNED_FREE(table->map.tree);
+		memset(&table->map, 0, sizeof(imap_t));
+	}
+	memset(table, 0, sizeof(table_t));
+}
+
+void _table_each_fn(table_t *table, void(*callback)(table_t*, table_entry_t*, void*), void *userdata) {
+    imap_iter_t iter;
+    imap_pair_t pair = imap_iterate(table->map.tree, &iter, 1);
+    size_t i = 0;
+    while (pair.slot) {
+		uint64_t value = 0;
+		_table_get(table, pair.x, &value);
+		callback(table, (table_entry_t*)value, userdata);
+        pair = imap_iterate(table->map.tree, &iter, 0);
+    }
+}
+
+void _table_each_block(table_t *table, void(^callback)(table_t*, table_entry_t*, void*), void *userdata) {
+    imap_iter_t iter;
+    imap_pair_t pair = imap_iterate(table->map.tree, &iter, 1);
+    size_t i = 0;
+    while (pair.slot) {
+		uint64_t value = 0;
+		_table_get(table, pair.x, &value);
+		callback(table, (table_entry_t*)value, userdata);
+        pair = imap_iterate(table->map.tree, &iter, 0);
+    }
 }
 #endif

@@ -1,8 +1,11 @@
 # table.h
 
-Table data type for C.
+> [!WARNING]
+> Work in progress
 
-Build off [billziss-gh/imap](https://github.com/billziss-gh/imap) + the  C11 `_Generic` macro to create an incredibly simple and seemless table, where strings, ints or pointers can be keys or values;
+Table data type for C inspired by lua's table.
+
+Build off [billziss-gh/imap](https://github.com/billziss-gh/imap) + the  C11 `_Generic` macro to create an incredibly simple and seemless table, where strings, ints or pointers can be keys or values:
 
 ```c
 table_t table_new(void); // default hashfn (murmur) + capacity (8)
