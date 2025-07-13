@@ -34,8 +34,15 @@ int main(int argc, const char *argv[]) {
     if (!table_get(&table, "test2", &poo_ptr))
         return 1;
     
-    table_each(&table, NULL, ^(table_t *table, table_entry_t *entry, void *userdata) {
-        printf("test\n");
+    table_each(&table, NULL, ^(table_t *table, const char *key, table_entry_t *entry, void *userdata) {
+        if (key)
+            printf("Key: %s, Value: %llu\n", key, entry->value);
+        else
+            printf("Value: %llu\n", entry->value);
+    });
+
+    table_keys(&table, NULL, ^(table_t *table, const char *key, void *userdata) {
+        printf("Key: %s\n", key);
     });
 
     table_free(&table);
