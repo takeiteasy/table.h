@@ -1,39 +1,43 @@
 #define TABLE_IMPLEMENTATION
 #include "table.h"
-#include <assert.h>
 #include <stdio.h>
 
 typedef struct test {
     int dummyA;
     float dummyB;
-} test_t;
+} dummy_t;
 
 int main(int argc, const char *argv[]) {
-    table_t table = table_new();
-    table_set(&table, "test", 100);
-    int a, b;
-    table_get(&table, "test", &a);
-    assert(a == 100);
-    table_set(&table, a, 200);
-    table_get(&table, a, &b);
-    assert(b == 200);
+    table_t table = table();
+
+    dummy_t poo = {1, 2.f}; 
+    table_set(&table, "test1", "poopoo");
+    table_set(&table, "test2", &poo);
+    table_set(&table, 100, 200);
+
+    if (!table_has(&table, "test1") ||
+        !table_has(&table, "test2") ||
+        !table_has(&table, 100))
+        return 1;
+
+    table_del(&table, 100);
+    if (table_has(&table, 100))
+        return 1;
+    int dummy = 0;
+    if (table_get(&table, 100, &dummy))
+        return 1;
+
+    const char *poopoo = NULL;
+    if (!table_get(&table, "test1", &poopoo))
+        return 1;
+    dummy_t *poo_ptr = NULL;
+    if (!table_get(&table, "test2", &poo_ptr))
+        return 1;
+    
+    table_each(&table, NULL, ^(table_t *table, table_entry_t *entry, void *userdata) {
+        printf("test\n");
+    });
+
     table_free(&table);
-
-    table_t table2 = table_new();
-    test_t test = {1, 2.0};
-    table_set(&table2, "test", &test);
-    test_t *test2;
-    table_get(&table2, "test", (void**)&test2);
-    assert(test2->dummyA == 1);
-    assert(test2->dummyB == 2.0);
-
-    uint64_t tmp;
-    unordered_map_t map = unordered_map_new();
-    assert(unordered_map_set(&map, 1000, 2000));
-    assert(unordered_map_get(&map, 1000, &tmp));
-    assert(tmp == 2000);
-    assert(unordered_map_del(&map, 1000));
-    assert(!unordered_map_get(&map, 1000, NULL));
-    unordered_map_free(&map);
     return 0;
 }

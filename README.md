@@ -1,5 +1,8 @@
 # table.h
 
+> [!WARNING]
+> Work in progress
+
 Lua inspired table data type for C. Seemlessly use strings, integers or even pointers as keys by abusing C11 _Generic.
 
 > [!NOTE]
