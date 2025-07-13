@@ -1,2 +1,5 @@
 .DS_Store
 .ropeproject/
+.vscode/
+*.dSYM
+a.out
