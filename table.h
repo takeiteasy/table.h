@@ -1,7 +1,5 @@
 /* table.h -- https://github.com/takeiteasy/table.h
 
- table for C
-
  Copyright (C) 2024  George Watson
 
  This program is free software: you can redistribute it and/or modify
@@ -18,7 +16,31 @@
  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
  This library is based off https://github.com/billziss-gh/imap/
- Copyright (c) 2023 Bill Zissimopoulos. All rights reserved. */
+ Copyright (c) 2023 Bill Zissimopoulos. All rights reserved.
+
+ imap -- https://github.com/billziss-gh/imap
+
+ MIT License
+
+ Copyright (c) 2023 Bill Zissimopoulos
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE. */
 
 #ifndef TABLE_HEADER
 #define TABLE_HEADER
@@ -92,17 +114,19 @@ void _table_each_fn(table_t *table, void(*callback)(table_t*, const char*, table
 void _table_each_block(table_t *table, void(^callback)(table_t*, const char*, table_entry_t*, void*), void *userdata);
 imap_node_t* _imap_ensure(imap_node_t *tree, uint32_t n);
 
-#define _T_IMAP(C) \
-    (imap_t) { \
-        .capacity = (C), \
-        .count = 0, \
+#define _T_IMAP(C)                      \
+    (imap_t)                            \
+    {                                   \
+        .capacity = (C),                \
+        .count = 0,                     \
         .tree = _imap_ensure(NULL, (C)) \
     }
-#define _T_TABLE(FN, C, S) \
-    (table_t) { \
-        .hashfn = (FN), \
-        .seed = (S), \
-        .map = _T_IMAP((C) > TABLE_INITIAL_CAPACITY ? (C) : TABLE_INITIAL_CAPACITY), \
+#define _T_TABLE(FN, C, S)                                                            \
+    (table_t)                                                                         \
+    {                                                                                 \
+        .hashfn = (FN),                                                               \
+        .seed = (S),                                                                  \
+        .map = _T_IMAP((C) > TABLE_INITIAL_CAPACITY ? (C) : TABLE_INITIAL_CAPACITY),  \
         .keys = _T_IMAP((C) > TABLE_INITIAL_CAPACITY ? (C) : TABLE_INITIAL_CAPACITY), \
     }
 
@@ -112,87 +136,87 @@ enum _table_type {
     T_VOID
 };
 
-#define _T_TYPE(T)                \
-_Generic((T),                     \
-    char: T_INT,                  \
-    short: T_INT,                 \
-    int: T_INT,                   \
-    long: T_INT,                  \
-    long long: T_INT,             \
-    unsigned char: T_INT,         \
-    unsigned short: T_INT,        \
-    unsigned int: T_INT,          \
-    unsigned long: T_INT,         \
-    unsigned long long: T_INT,    \
-    char *: T_STR,                \
-    const char *: T_STR,          \
-    unsigned char *: T_STR,       \
-    const unsigned char *: T_STR, \
-    void *: T_VOID,               \
-    default: T_VOID)
+#define _T_TYPE(T)                    \
+    _Generic((T),                     \
+        char: T_INT,                  \
+        short: T_INT,                 \
+        int: T_INT,                   \
+        long: T_INT,                  \
+        long long: T_INT,             \
+        unsigned char: T_INT,         \
+        unsigned short: T_INT,        \
+        unsigned int: T_INT,          \
+        unsigned long: T_INT,         \
+        unsigned long long: T_INT,    \
+        char *: T_STR,                \
+        const char *: T_STR,          \
+        unsigned char *: T_STR,       \
+        const unsigned char *: T_STR, \
+        void *: T_VOID,               \
+        default: T_VOID)
 
-#define _T_COERCE(T, V)                \
-_Generic((int (*)[_T_TYPE(V)])NULL,    \
-    int (*)[T_INT]: _table_int_to_int, \
-    int (*)[T_STR]: _table_str_to_int, \
-    default: _table_void_to_int)((T), (V))
+#define _T_COERCE(T, V)                    \
+    _Generic((int (*)[_T_TYPE(V)])NULL,    \
+        int (*)[T_INT]: _table_int_to_int, \
+        int (*)[T_STR]: _table_str_to_int, \
+        default: _table_void_to_int)((T), (V))
 
 #define table() \
-(_T_TABLE(_table_murmur, TABLE_INITIAL_CAPACITY, 0))
+    (_T_TABLE(_table_murmur, TABLE_INITIAL_CAPACITY, 0))
 
 void table_free(table_t *table);
 
-#define table_set(T, A, B)                      \
-_Generic((int (*)[_T_TYPE(A)][_T_TYPE(B)])NULL, \
-    int (*)[T_INT][T_INT]: _table_set_int,      \
-    int (*)[T_INT][T_STR]: _table_set_int,      \
-    int (*)[T_INT][T_VOID]: _table_set_int,     \
-    int (*)[T_STR][T_INT]: _table_set_str,      \
-    int (*)[T_STR][T_STR]: _table_set_str,      \
-    int (*)[T_STR][T_VOID]: _table_set_str,     \
-    int (*)[T_VOID][T_INT]: _table_set_void,    \
-    int (*)[T_VOID][T_STR]: _table_set_void,    \
-    int (*)[T_VOID][T_VOID]: _table_set_void)((T), (A), _T_COERCE((T), (B)))
+#define table_set(T, A, B)                          \
+    _Generic((int (*)[_T_TYPE(A)][_T_TYPE(B)])NULL, \
+        int (*)[T_INT][T_INT]: _table_set_int,      \
+        int (*)[T_INT][T_STR]: _table_set_int,      \
+        int (*)[T_INT][T_VOID]: _table_set_int,     \
+        int (*)[T_STR][T_INT]: _table_set_str,      \
+        int (*)[T_STR][T_STR]: _table_set_str,      \
+        int (*)[T_STR][T_VOID]: _table_set_str,     \
+        int (*)[T_VOID][T_INT]: _table_set_void,    \
+        int (*)[T_VOID][T_STR]: _table_set_void,    \
+        int (*)[T_VOID][T_VOID]: _table_set_void)((T), (A), _T_COERCE((T), (B)))
 
-#define _T_GET(T, K)                \
-_Generic((int (*)[_T_TYPE(K)])NULL, \
-    int (*)[T_INT]: _table_get_int, \
-    int (*)[T_STR]: _table_get_str, \
-    int (*)[T_VOID]: _table_get_void)((T), (K))
+#define _T_GET(T, K)                    \
+    _Generic((int (*)[_T_TYPE(K)])NULL, \
+        int (*)[T_INT]: _table_get_int, \
+        int (*)[T_STR]: _table_get_str, \
+        int (*)[T_VOID]: _table_get_void)((T), (K))
 
-#define table_get(T, K, V)                       \
-(^(table_t * _t, typeof(K) _k, typeof(V) _v) {   \
-  uint64_t _out = 0;                             \
-  if (!_table_get(_t, _T_GET(_t, _k), &_out))    \
-      return false;                              \
-  table_entry_t *_entry = (table_entry_t *)_out; \
-  if (!_entry)                                   \
-      return false;                              \
-  if (_v)                                        \
-      *_v = (typeof(*_v))_entry->value;          \
-  return true;                                   \
-})((T), (K), (V))
+#define table_get(T, K, V)                                  \
+    (^(table_t * _t, typeof(K) _k, typeof(V) _v) {          \
+        uint64_t _out = 0;                                  \
+        if (!_table_get(_t, _T_GET(_t, _k), &_out))         \
+            return false;                                   \
+        table_entry_t *_entry = (table_entry_t *)_out;      \
+        if (!_entry)                                        \
+            return false;                                   \
+        if (_v)                                             \
+            *_v = (typeof(*_v))_entry->value;               \
+        return true;                                        \
+    })((T), (K), (V))
 
-#define table_has(T, K)                  \
-(^(table_t * _t, typeof(K) _k) {         \
-  return _table_has(_t, _T_GET(_t, _k)); \
-})((T), (K))
+#define table_has(T, K)                         \
+    (^(table_t * _t, typeof(K) _k) {            \
+        return _table_has(_t, _T_GET(_t, _k));  \
+    })((T), (K))
 
-#define table_del(T, K)                                       \
-(^(table_t * _t, typeof(K) _k) {                              \
-  uint64_t _key = _T_GET(_t, _k);                             \
-  return _table_has(_t, _key) ? _table_del(_t, _key) : false; \
-})((T), (K))
+#define table_del(T, K)                                             \
+    (^(table_t * _t, typeof(K) _k) {                                \
+    uint64_t _key = _T_GET(_t, _k);                                 \
+        return _table_has(_t, _key) ? _table_del(_t, _key) : false; \
+    })((T), (K))
 
-#define table_each(T, USERDATA, FN)                                             \
-_Generic((FN),                                                                  \
-    void (*)(table_t *, const char *, table_entry_t *, void *): _table_each_fn, \
-    void (^)(table_t *, const char *, table_entry_t *, void *): _table_each_block)((T), (FN), (USERDATA))
+#define table_each(T, USERDATA, FN)                                                 \
+    _Generic((FN),                                                                  \
+        void (*)(table_t *, const char *, table_entry_t *, void *): _table_each_fn, \
+        void (^)(table_t *, const char *, table_entry_t *, void *): _table_each_block)((T), (FN), (USERDATA))
 
-#define table_keys(T, USERDATA, FN)                                 \
-_Generic((FN),                                                      \
-    void (*)(table_t *, const char *, void *): _table_keys_each_fn, \
-    void (^)(table_t *, const char *, void *): _table_keys_each_block)((T), (FN), (USERDATA))
+#define table_keys(T, USERDATA, FN)                                     \
+    _Generic((FN),                                                      \
+        void (*)(table_t *, const char *, void *): _table_keys_each_fn, \
+        void (^)(table_t *, const char *, void *): _table_keys_each_block)((T), (FN), (USERDATA))
 
 #ifdef __cplusplus
 }
@@ -601,9 +625,10 @@ static imap_pair_t imap_iterate(imap_node_t *tree, imap_iter_t *iter, int restar
     return imap__pair_zero__;
 }
 
-static void MM86128(const void *key, const int len, uint32_t seed, void *out) {
 #define ROTL32(x, r) ((x << r) | (x >> (32 - r)))
 #define FMIX32(h) h^=h>>16; h*=0x85ebca6b; h^=h>>13; h*=0xc2b2ae35; h^=h>>16;
+
+static void MM86128(const void *key, const int len, uint32_t seed, void *out) {
     const uint8_t * data = (const uint8_t*)key;
     const int nblocks = len / 16;
     uint32_t h1 = seed;
@@ -791,7 +816,6 @@ void table_free(table_t *table) {
             pair = imap_iterate(table->keys.tree, &iter, 0);
         }
 		IMAP_ALIGNED_FREE(table->keys.tree);
-		memset(&table->map, 0, sizeof(imap_t));
 	}
 	memset(table, 0, sizeof(table_t));
 }

@@ -5,19 +5,19 @@
 
 Lua inspired table data type for C. Seemlessly use strings, integers or even pointers as keys by abusing C11 _Generic.
 
-> [!NOTE]
-> Built off [billziss-gh/imap](https://github.com/billziss-gh/imap)
-
 ### API
 
 ```c
 table_t table(void);
 void table_free(table_t *table);
-#define table_get(TABLE, KEY, VALUE) ...
-#define table_set(TABLE, KEY, VALUE) ...
-#define table_has(TABLE, KEY) ...
-#define table_del(TABLE, KEY) ...
-#define table_each(TABLE, CALLBACK, USERDATA) ... 
+bool table_set(table_t, KEY, VALUE);
+bool table_get(table_t, KEY, &VALUE);
+bool table_has(table_t, KEY);
+bool table_del(table_t, KEY);
+// void(*^callback)(table_t *table, const char *key, table_entry_t *entry, void *userdata);
+void table_each(table_t, CALLBACK, USERDATA);
+// void(*^callback)(table_t *table, const char *key, void *userdata);
+void table_keys(table_t, CALLBACK, USERDATA);
 ```
 
 ### example
@@ -48,12 +48,6 @@ int main(int argc, const char *argv[]) {
     return 0;
 }
 ```
-
-### TODO
-
-- [ ] Strings as values
-- [ ] Shrink capacity on delete
-- [ ] Documentation + examples
 
 ## License
 
