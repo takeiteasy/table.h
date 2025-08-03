@@ -33,17 +33,19 @@ int main(int argc, const char *argv[]) {
     dummy_t *poo_ptr = NULL;
     if (!table_get(&table, "test2", &poo_ptr))
         return 1;
-    
-    table_each(&table, NULL, ^(table_t *table, const char *key, table_entry_t *entry, void *userdata) {
-        if (key)
-            printf("Key: %s, Value: %llu\n", key, entry->value);
+
+    table_each(&table, NULL, ^(table_t *table, uint64_t key, const char *key_str, table_entry_t *entry, void *userdata) {
+        if (key_str)
+            printf("Key: %s, Value: %llu\n", key_str, entry->value);
         else
-            printf("Value: %llu\n", entry->value);
+            printf("Key: %llu, Value: %llu\n", key, entry->value);
     });
 
-    table_keys(&table, NULL, ^(table_t *table, const char *key, void *userdata) {
-        printf("Key: %s\n", key);
-    });
+    table_set(&table, "test3", 3.14159);
+    double *pi = NULL;
+    table_get(&table, "test3", &pi);
+    printf("Pi: %f\n", *pi);
+    assert(*pi == 3.14159);
 
     table_free(&table);
     return 0;
