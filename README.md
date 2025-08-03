@@ -9,15 +9,15 @@ Lua inspired table data type for C. Seemlessly use strings, integers or even poi
 
 ```c
 table_t table(void);
+// hash function, initial capacity, hash seed
+table_t table_ex(FN, CAPACITY, SEED);
 void table_free(table_t *table);
 bool table_set(table_t, KEY, VALUE);
 bool table_get(table_t, KEY, &VALUE);
 bool table_has(table_t, KEY);
 bool table_del(table_t, KEY);
-// void(*^callback)(table_t *table, const char *key, table_entry_t *entry, void *userdata);
+// void(*^callback)(table_t *table, uint64_t key, const char *key_str, table_entry_t *entry, void *userdata);
 void table_each(table_t, CALLBACK, USERDATA);
-// void(*^callback)(table_t *table, const char *key, void *userdata);
-void table_keys(table_t, CALLBACK, USERDATA);
 ```
 
 ### Example
@@ -59,17 +59,13 @@ int main(int argc, const char *argv[]) {
     struct dumb *ptr = NULL;
     assert(table_get(&table, "test2", &ptr));
     assert(ptr && ptr->i == dumb.i && ptr->f == dumb.f);
-    // loop through each table value (unordered), the key argument
+    // loop through each table value (unordered), the key_str argument
     // will be null unless the entry uses a string key
-    table_each(&table, NULL, ^(table_t *table, const char *key, table_entry_t *entry, void *userdata) {
+    table_each(&table, NULL, ^(table_t *table, uint64_t key, const char *key_str, table_entry_t *entry, void *userdata) {
         if (key)
-            printf("Key: %s, Value: %llu\n", key, entry->value);
+            printf("Key: %s, Value: %llu\n", key_str, entry->value);
         else
-            printf("Value: %llu\n", entry->value);
-    });
-    // loop through table string keys
-    table_keys(&table, NULL, ^(table_t *table, const char *key, void *userdata) {
-        printf("Key: %s\n", key);
+            printf("Key: %llu, Value: %llu\n", key, entry->value);
     });
     // free up all the memory
     table_free(&table);
